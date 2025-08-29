@@ -9,6 +9,7 @@
 #include "iim4623x.h"
 #include "iim4623x_reg.h"
 #include "iim4623x_bus.h"
+#include "iim4623x_decoder.h"
 #include <zephyr/dt-bindings/sensor/iim4623x.h>
 
 #include <zephyr/device.h>
@@ -309,17 +310,6 @@ static int iim4623x_sample_fetch(const struct device *dev, enum sensor_channel c
 	return 0;
 }
 
-static void iim4623x_accel_ms(float in, struct sensor_value *out)
-{
-	/* TODO: do we also need to support iim46234 2s-complement data format? */
-	sensor_ug_to_ms2((in * 1000000), out);
-}
-
-static void iim4623x_gyro_rads(float in, struct sensor_value *out)
-{
-	sensor_10udegrees_to_rad((in * 100000), out);
-}
-
 static int iim4623x_channel_get(const struct device *dev, enum sensor_channel chan,
 				struct sensor_value *val)
 {
@@ -365,9 +355,93 @@ static int iim4623x_channel_get(const struct device *dev, enum sensor_channel ch
 	return ret;
 }
 
+#ifdef CONFIG_SENSOR_ASYNC_API
+static void iim4623x_submit_one_shot(const struct device *dev, struct rtio_iodev_sqe *iodev_sqe)
+{
+	const struct sensor_read_config *cfg = iodev_sqe->sqe.iodev->data;
+	uint32_t min_buf_len = sizeof(struct iim4623x_encoded_data);
+	const struct iim4623x_data *data = dev->data;
+	struct iim4623x_encoded_data *edata;
+	struct rtio_sqe *read_sqe;
+	uint32_t buf_len;
+	uint8_t *buf;
+	int ret;
+
+	ret = rtio_sqe_rx_buf(iodev_sqe, min_buf_len, min_buf_len, &buf, &buf_len);
+	if (ret || !buf || buf_len < min_buf_len) {
+		LOG_ERR("Failed to get a read buffer of size %u bytes", min_buf_len);
+		rtio_iodev_sqe_err(iodev_sqe, ret);
+		return;
+	}
+
+	edata = (struct iim4623x_encoded_data *)buf;
+
+	/* TODO: should we use encode function instead?? */
+	edata->header = data->edata.header;
+
+	// err = iim4623x_encode(dev, cfg, 0, buf);
+	// if (err != 0) {
+	//	LOG_ERR("Failed to encode sensor data");
+	//	rtio_iodev_sqe_err(iodev_sqe, err);
+	//	return;
+	// }
+
+	/* TODO: implement async flow like below */
+	// err = bmp581_prep_reg_read_rtio_async(&conf->bus, BMP5_REG_TEMP_DATA_XLSB,
+	// edata->payload, 				      sizeof(edata->payload), &read_sqe); if
+	// (err < 0) { 	LOG_ERR("Failed to
+	// prepare async read operation"); 	rtio_iodev_sqe_err(iodev_sqe, err); 	return;
+	// }
+	// read_sqe->flags |= RTIO_SQE_CHAINED;
+
+	// struct rtio_sqe *complete_sqe = rtio_sqe_acquire(conf->bus.rtio.ctx);
+
+	// if (!complete_sqe) {
+	//	LOG_ERR("Failed to acquire completion SQE");
+	//	rtio_iodev_sqe_err(iodev_sqe, -ENOMEM);
+	//	rtio_sqe_drop_all(conf->bus.rtio.ctx);
+	//	return;
+	// }
+
+	// rtio_sqe_prep_callback_no_cqe(complete_sqe, bmp581_complete_result, iodev_sqe, (void
+	// *)dev);
+
+	// rtio_submit(conf->bus.rtio.ctx, 0);
+
+	ret = iim4623x_read_data_reg(dev, IIM4623X_REG_SAMPLE_STATUS, (uint8_t *)&edata->payload,
+				     sizeof(struct iim4623x_pck_strm_payload));
+	if (ret) {
+		LOG_ERR("Fetching sample, ret: %d", ret);
+		rtio_iodev_sqe_err(iodev_sqe, ret);
+		return;
+	}
+
+	/* Convert wire endianess to cpu */
+	iim4623x_payload_be_to_cpu(&edata->payload);
+
+	rtio_iodev_sqe_ok(iodev_sqe, 0);
+}
+
+static void iim4623x_submit(const struct device *dev, struct rtio_iodev_sqe *iodev_sqe)
+{
+	const struct sensor_read_config *cfg = iodev_sqe->sqe.iodev->data;
+
+	if (!cfg->is_streaming) {
+		iim4623x_submit_one_shot(dev, iodev_sqe);
+	} else {
+		LOG_ERR("Streaming not supported");
+		rtio_iodev_sqe_err(iodev_sqe, -ENOTSUP);
+	}
+}
+#endif /* #ifdef CONFIG_SENSOR_ASYNC_API */
+
 static DEVICE_API(sensor, iim4623x_api) = {
 	.sample_fetch = iim4623x_sample_fetch,
 	.channel_get = iim4623x_channel_get,
+#ifdef CONFIG_SENSOR_ASYNC_API
+	.submit = iim4623x_submit,
+	.get_decoder = iim4623x_get_decoder,
+#endif /* #ifdef CONFIG_SENSOR_ASYNC_API */
 };
 
 static int iim4623x_init(const struct device *dev)
