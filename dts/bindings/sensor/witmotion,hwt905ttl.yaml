@@ -1,0 +1,8 @@
+# Copyright (c) 2025 Sentry Technologies
+# SPDX-License-Identifier: Apache-2.0
+
+description: WIT Motion HWT905-TTL IMU
+
+compatible: "witmotion,hwt905ttl"
+
+include: [sensor-device.yaml, uart-device.yaml]
