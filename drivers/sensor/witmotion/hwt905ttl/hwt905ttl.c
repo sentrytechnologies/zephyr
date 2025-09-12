@@ -100,11 +100,8 @@ static int hwt905ttl_checksum_compare(const uint8_t *buf)
 
 static int hwt905ttl_write(const struct device *dev, const uint8_t *buf)
 {
-	int ret;
 	const struct hwt905ttl_cfg *cfg = dev->config;
 	const struct device *uart_dev = cfg->uart_dev;
-
-	/* const int sleep_ms = 1000; */
 
 	if (!uart_dev) {
 		LOG_ERR("UART device is NULL");
@@ -114,8 +111,6 @@ static int hwt905ttl_write(const struct device *dev, const uint8_t *buf)
 	for (int i = 0; i < WIT_DATA_WRITE_LEN; i++) {
 		uart_poll_out(uart_dev, buf[i]);
 	}
-
-	/* k_msleep(sleep_ms); /\* Device needs some time between writes *\/ */
 
 	return 0;
 }
@@ -148,14 +143,29 @@ static int hwt905_send_command(const struct device *dev, enum wit_register reg, 
 	return 0;
 }
 
+static int hwt905ttl_attr_get(const struct device *dev, enum sensor_channel chan,
+			      enum sensor_attribute attr, struct sensor_value *val)
+{
+	if (attr != SENSOR_ATTR_SAMPLING_FREQUENCY) {
+		return -ENOTSUP;
+	}
+
+	val->val1 = 100;
+
+	return 0;
+}
+
 static int hwt905ttl_attr_set(const struct device *dev, enum sensor_channel chan,
 			      enum sensor_attribute attr, const struct sensor_value *val)
 {
+	return 0;
+
 	switch (attr) {
 	case SENSOR_ATTR_SAMPLING_FREQUENCY:
-		if (chan != SENSOR_CHAN_ALL) {
-			return -ENOTSUP;
-		}
+		LOG_INF("Setting attribute %d on channel %d, val %d", attr, chan, val->val1);
+		/* if (chan != SENSOR_CHAN_ALL) { */
+		/* 	return -ENOTSUP; */
+		/* } */
 
 		switch (val->val1) {
 		case 0:
@@ -375,6 +385,8 @@ static int hwt905ttl_sample_fetch(const struct device *dev, enum sensor_channel 
 static DEVICE_API(sensor, hwt905ttl_api_funcs) = {
 	.sample_fetch = hwt905ttl_sample_fetch,
 	.channel_get = hwt905ttl_channel_get,
+	.attr_set = hwt905ttl_attr_set,
+	.attr_get = hwt905ttl_attr_get,
 };
 
 static void hwt905ttl_uart_isr(const struct device *uart_dev, void *user_data)
