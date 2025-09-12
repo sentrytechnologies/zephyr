@@ -19,7 +19,15 @@
 
 #include "wit-protocol.h"
 
-LOG_MODULE_REGISTER(hwt905ttl_sensor, CONFIG_SENSOR_LOG_LEVEL);
+LOG_MODULE_REGISTER(hwt905ttl_sensor, LOG_LEVEL_DBG);
+
+/*
+ * Empirical measurements show that after every packet write, hwt905ttl needs at least 3ms to
+ * register the command
+ */
+#define HWT905TTL_WRITE_SLEEP_MS 3
+
+#define HWT905TTL_TIMEOUT_MS 500
 
 static const uint8_t hwt905ttl_unlock_buffer[] = {WIT_CMD_HEAD1, WIT_CMD_HEAD2, WIT_REG_KEY, 0x88,
 						  0xB5};
@@ -59,17 +67,85 @@ struct hwt905ttl_measurements {
 	struct sensor_value temp;
 };
 
+struct hwt905ttl_rx_data {
+	uint8_t xfer_bytes;
+	struct k_sem read_done;
+	uint8_t rd[WIT_MEASU_READ_LEN];
+	uint8_t raw[WIT_TYPE_COUNT][WIT_MEASU_READ_LEN];
+};
+
+struct hwt905ttl_tx_data {
+	uint8_t xfer_bytes;
+	const uint8_t *cmd;
+	struct k_sem tx_done;
+};
+
 /* TODO: Mutex to protect most of this */
 struct hwt905ttl_data {
-	uint8_t xfer_bytes;
+	struct hwt905ttl_rx_data rx_data;
+	struct hwt905ttl_tx_data tx_data;
 	struct hwt905ttl_measurements measu;
-	uint8_t rd_data[WIT_MEASU_READ_LEN];
-	uint8_t data[WIT_TYPE_COUNT][WIT_MEASU_READ_LEN];
 };
 
 struct hwt905ttl_cfg {
 	const struct device *uart_dev;
 };
+
+struct hwt905ttl_rrate_map_entry {
+	uint32_t freq_uhz;
+	enum wit_output_rate code;
+};
+
+/* clang-format off */
+static const struct hwt905ttl_rrate_map_entry hwt905ttl_rrate_map[] = {
+	{0U,		WIT_RRATE_NONE},
+	{200000U,	WIT_RRATE_0_2HZ},
+	{500000U,	WIT_RRATE_0_5HZ},
+	{1000000U,	WIT_RRATE_1HZ},
+	{2000000U,	WIT_RRATE_2HZ},
+	{5000000U,	WIT_RRATE_5HZ},
+	{10000000U,	WIT_RRATE_10HZ},
+	{20000000U,	WIT_RRATE_20HZ},
+	{50000000U,	WIT_RRATE_50HZ},
+	{100000000U,	WIT_RRATE_100HZ},
+	{200000000U,	WIT_RRATE_200HZ},
+};
+/* clang-format on */
+
+static inline uint32_t hwt905ttl_sensor_value_to_uhz(const struct sensor_value *v)
+{
+	return (uint32_t)v->val1 * 1000000U + (uint32_t)v->val2;
+}
+
+static inline void hwt905ttl_uhz_to_sensor_value(uint32_t uhz, struct sensor_value *v)
+{
+	v->val1 = uhz / 1000000U;
+	v->val2 = uhz % 1000000U;
+}
+
+static int hwt905ttl_rrate_code_from_value(const struct sensor_value *val, uint8_t *out_code)
+{
+	uint32_t uhz = hwt905ttl_sensor_value_to_uhz(val);
+
+	for (size_t i = 0; i < ARRAY_SIZE(hwt905ttl_rrate_map); i++) {
+		if (hwt905ttl_rrate_map[i].freq_uhz == uhz) {
+			*out_code = hwt905ttl_rrate_map[i].code;
+			return 0;
+		}
+	}
+	return -ENOTSUP;
+}
+
+static int hwt905ttl_rrate_value_from_code(uint8_t code, struct sensor_value *out_val)
+{
+	for (size_t i = 0; i < ARRAY_SIZE(hwt905ttl_rrate_map); i++) {
+		if (hwt905ttl_rrate_map[i].code == code) {
+			hwt905ttl_uhz_to_sensor_value(hwt905ttl_rrate_map[i].freq_uhz, out_val);
+			return 0;
+		}
+	}
+	return -ENOTSUP;
+}
 
 static void hwt905ttl_uart_flush(const struct device *uart_dev)
 {
@@ -101,41 +177,36 @@ static int hwt905ttl_checksum_compare(const uint8_t *buf)
 static int hwt905ttl_write(const struct device *dev, const uint8_t *buf)
 {
 	int ret;
+	struct hwt905ttl_data *data = dev->data;
 	const struct hwt905ttl_cfg *cfg = dev->config;
-	const struct device *uart_dev = cfg->uart_dev;
 
-	/* const int sleep_ms = 1000; */
-
-	if (!uart_dev) {
-		LOG_ERR("UART device is NULL");
-		return -EINVAL;
+	data->tx_data.cmd = buf;
+	uart_irq_tx_enable(cfg->uart_dev);
+	ret = k_sem_take(&data->tx_data.tx_done, K_MSEC(HWT905TTL_TIMEOUT_MS));
+	if (ret) {
+		return ret;
 	}
-
-	for (int i = 0; i < WIT_DATA_WRITE_LEN; i++) {
-		uart_poll_out(uart_dev, buf[i]);
-	}
-
-	/* k_msleep(sleep_ms); /\* Device needs some time between writes *\/ */
+	k_msleep(HWT905TTL_WRITE_SLEEP_MS);
 
 	return 0;
 }
 
-static int hwt905_send_command(const struct device *dev, enum wit_register reg, uint16_t value)
+static int hwt905ttl_send_command(const struct device *dev, enum wit_register reg, uint16_t value)
 {
-	uint8_t cmd[WIT_DATA_WRITE_LEN];
 	int ret;
+	uint8_t local_cmd[WIT_DATA_WRITE_LEN];
+
+	local_cmd[0] = WIT_CMD_HEAD1;
+	local_cmd[1] = WIT_CMD_HEAD2;
+	local_cmd[2] = reg;
+	*(uint16_t *)(&local_cmd[3]) = sys_cpu_to_le16(value);
 
 	ret = hwt905ttl_write(dev, hwt905ttl_unlock_buffer);
 	if (ret) {
 		return ret;
 	}
 
-	cmd[0] = WIT_CMD_HEAD1;
-	cmd[1] = WIT_CMD_HEAD2;
-	cmd[2] = reg;
-	*(uint16_t *)(&cmd[3]) = sys_cpu_to_le16(value);
-
-	ret = hwt905ttl_write(dev, cmd);
+	ret = hwt905ttl_write(dev, local_cmd);
 	if (ret) {
 		return ret;
 	}
@@ -148,39 +219,63 @@ static int hwt905_send_command(const struct device *dev, enum wit_register reg, 
 	return 0;
 }
 
+static int hwt905ttl_read(const struct device *dev, enum wit_register reg, uint8_t *value)
+{
+	int ret;
+	struct hwt905ttl_data *data = dev->data;
+
+	ret = hwt905ttl_send_command(dev, WIT_REG_READADDR, reg);
+	if (ret) {
+		return ret;
+	}
+
+	ret = k_sem_take(&data->rx_data.read_done, K_MSEC(HWT905TTL_TIMEOUT_MS));
+	if (ret) {
+		return ret;
+	}
+
+	*value = data->rx_data.raw[WIT_TYPE_READ_REG - WIT_TYPE_OFFSET][2];
+
+	return 0;
+}
+
+static int hwt905ttl_attr_get(const struct device *dev, enum sensor_channel chan,
+			      enum sensor_attribute attr, struct sensor_value *val)
+{
+	int ret;
+	uint8_t value;
+
+	val->val1 = 0;
+	val->val2 = 0;
+
+	switch (attr) {
+	case SENSOR_ATTR_SAMPLING_FREQUENCY:
+		ret = hwt905ttl_read(dev, WIT_REG_RRATE, &value);
+		if (ret) {
+			return ret;
+		}
+
+		return hwt905ttl_rrate_value_from_code(value, val);
+	default:
+		return -ENOTSUP;
+	}
+}
+
 static int hwt905ttl_attr_set(const struct device *dev, enum sensor_channel chan,
 			      enum sensor_attribute attr, const struct sensor_value *val)
 {
+	int ret;
+	uint8_t code;
+
 	switch (attr) {
-	case SENSOR_ATTR_SAMPLING_FREQUENCY:
-		if (chan != SENSOR_CHAN_ALL) {
-			return -ENOTSUP;
+	case SENSOR_ATTR_SAMPLING_FREQUENCY: {
+		ret = hwt905ttl_rrate_code_from_value(val, &code);
+		if (ret) {
+			return ret;
 		}
 
-		switch (val->val1) {
-		case 0:
-			return hwt905_send_command(dev, WIT_REG_RRATE, WIT_RRATE_NONE);
-		case 1:
-			return hwt905_send_command(dev, WIT_REG_RRATE, WIT_RRATE_1HZ);
-		case 2:
-			return hwt905_send_command(dev, WIT_REG_RRATE, WIT_RRATE_2HZ);
-		case 5:
-			return hwt905_send_command(dev, WIT_REG_RRATE, WIT_RRATE_5HZ);
-		case 10:
-			return hwt905_send_command(dev, WIT_REG_RRATE, WIT_RRATE_10HZ);
-		case 20:
-			return hwt905_send_command(dev, WIT_REG_RRATE, WIT_RRATE_20HZ);
-		case 50:
-			return hwt905_send_command(dev, WIT_REG_RRATE, WIT_RRATE_50HZ);
-		case 100:
-			return hwt905_send_command(dev, WIT_REG_RRATE, WIT_RRATE_100HZ);
-		case 200:
-			return hwt905_send_command(dev, WIT_REG_RRATE, WIT_RRATE_200HZ);
-		default:
-			return -ENOTSUP;
-		}
-
-		break;
+		return hwt905ttl_send_command(dev, WIT_REG_RRATE, code);
+	}
 	default:
 		return -ENOTSUP;
 	}
@@ -191,7 +286,7 @@ static int hwt905ttl_poll_acc(const struct device *dev)
 	struct hwt905ttl_data *data = dev->data;
 	struct hwt905ttl_measurements *measu = &data->measu;
 	static const double aux = (double)16LL / 32768LL * 1000000LL; /* converts output to ug */
-	const int16_t *raw_16 = (int16_t *)data->data[WIT_TYPE_ACCEL - WIT_TYPE_OFFSET];
+	const int16_t *raw_16 = (int16_t *)data->rx_data.raw[WIT_TYPE_ACCEL - WIT_TYPE_OFFSET];
 
 	sensor_ug_to_ms2((double)sys_le16_to_cpu(raw_16[1]) * aux, &measu->acc.ax);
 	sensor_ug_to_ms2((double)sys_le16_to_cpu(raw_16[2]) * aux, &measu->acc.ay);
@@ -205,7 +300,7 @@ static int hwt905ttl_poll_gyro(const struct device *dev)
 	struct hwt905ttl_data *data = dev->data;
 	struct hwt905ttl_measurements *measu = &data->measu;
 	static const double aux = (double)2000 / 32768 * 100000LL; /* converts output to 10 udeg */
-	const int16_t *raw_16 = (int16_t *)data->data[WIT_TYPE_GYRO - WIT_TYPE_OFFSET];
+	const int16_t *raw_16 = (int16_t *)data->rx_data.raw[WIT_TYPE_GYRO - WIT_TYPE_OFFSET];
 
 	sensor_10udegrees_to_rad((double)sys_le16_to_cpu(raw_16[1]) * aux, &measu->gyro.wx);
 	sensor_10udegrees_to_rad((double)sys_le16_to_cpu(raw_16[2]) * aux, &measu->gyro.wy);
@@ -218,7 +313,7 @@ static int hwt905ttl_poll_magn(const struct device *dev)
 {
 	struct hwt905ttl_data *data = dev->data;
 	struct hwt905ttl_measurements *measu = &data->measu;
-	const int16_t *raw_16 = (int16_t *)data->data[WIT_TYPE_MAG - WIT_TYPE_OFFSET];
+	const int16_t *raw_16 = (int16_t *)data->rx_data.raw[WIT_TYPE_MAG - WIT_TYPE_OFFSET];
 
 	measu->magn.hx.val1 = sys_le16_to_cpu(raw_16[1]);
 	measu->magn.hy.val1 = sys_le16_to_cpu(raw_16[2]);
@@ -232,7 +327,7 @@ static int hwt905ttl_poll_temp(const struct device *dev)
 	int ret;
 	struct hwt905ttl_data *data = dev->data;
 	struct hwt905ttl_measurements *measu = &data->measu;
-	const int16_t *raw_16 = (int16_t *)data->data[WIT_TYPE_ACCEL - WIT_TYPE_OFFSET];
+	const int16_t *raw_16 = (int16_t *)data->rx_data.raw[WIT_TYPE_ACCEL - WIT_TYPE_OFFSET];
 
 	ret = sensor_value_from_double(&measu->temp, (double)sys_le16_to_cpu(raw_16[4]) / 100LL);
 	if (ret) {
@@ -375,13 +470,69 @@ static int hwt905ttl_sample_fetch(const struct device *dev, enum sensor_channel 
 static DEVICE_API(sensor, hwt905ttl_api_funcs) = {
 	.sample_fetch = hwt905ttl_sample_fetch,
 	.channel_get = hwt905ttl_channel_get,
+	.attr_set = hwt905ttl_attr_set,
+	.attr_get = hwt905ttl_attr_get,
 };
+
+static void hwt905ttl_uart_isr_rx(const struct device *uart_dev, const struct device *dev)
+{
+	enum wit_data_type data_type;
+	struct hwt905ttl_data *data = dev->data;
+	struct hwt905ttl_rx_data *rx_data = &data->rx_data;
+
+	rx_data->xfer_bytes += uart_fifo_read(uart_dev, &rx_data->rd[rx_data->xfer_bytes],
+					      WIT_MEASU_READ_LEN - rx_data->xfer_bytes);
+
+	if ((rx_data->rd[0] != WIT_HDR_START)) {
+		LOG_DBG("First byte not header! Resetting # of bytes read.");
+		rx_data->xfer_bytes = 0;
+		return;
+	}
+
+	if (rx_data->xfer_bytes != WIT_MEASU_READ_LEN) {
+		return;
+	}
+
+	data_type = rx_data->rd[1];
+	if (data_type < WIT_TYPE_START || data_type > WIT_TYPE_END) {
+		LOG_ERR("Data type out of range: 0x%02X", rx_data->rd[1]);
+		rx_data->xfer_bytes = 0;
+		return;
+	}
+
+	if (hwt905ttl_checksum_compare(rx_data->rd)) {
+		rx_data->xfer_bytes = 0;
+		return;
+	}
+
+	memcpy(rx_data->raw[data_type - WIT_TYPE_OFFSET], rx_data->rd, WIT_MEASU_READ_LEN);
+
+	if (data_type == WIT_TYPE_READ_REG) {
+		k_sem_give(&rx_data->read_done);
+	}
+
+	hwt905ttl_uart_flush(uart_dev);
+	rx_data->xfer_bytes = 0;
+}
+
+static void hwt905ttl_uart_isr_tx(const struct device *uart_dev, const struct device *dev)
+{
+	struct hwt905ttl_data *data = dev->data;
+	struct hwt905ttl_tx_data *tx_data = &data->tx_data;
+
+	tx_data->xfer_bytes += uart_fifo_fill(uart_dev, &tx_data->cmd[tx_data->xfer_bytes],
+					      WIT_DATA_WRITE_LEN - tx_data->xfer_bytes);
+
+	if (tx_data->xfer_bytes == WIT_DATA_WRITE_LEN) {
+		tx_data->xfer_bytes = 0;
+		uart_irq_tx_disable(uart_dev);
+		k_sem_give(&data->tx_data.tx_done);
+	}
+}
 
 static void hwt905ttl_uart_isr(const struct device *uart_dev, void *user_data)
 {
-	enum wit_data_type data_type;
 	const struct device *dev = user_data;
-	struct hwt905ttl_data *data = dev->data;
 
 	if (!uart_dev) {
 		LOG_ERR("UART device is NULL");
@@ -393,45 +544,19 @@ static void hwt905ttl_uart_isr(const struct device *uart_dev, void *user_data)
 		return;
 	}
 
-	if (!uart_irq_rx_ready(uart_dev)) {
-		LOG_ERR("UART RX is not ready yet");
-		return;
+	if (uart_irq_rx_ready(uart_dev)) {
+		hwt905ttl_uart_isr_rx(uart_dev, dev);
 	}
 
-	data->xfer_bytes += uart_fifo_read(uart_dev, &data->rd_data[data->xfer_bytes],
-					   WIT_MEASU_READ_LEN - data->xfer_bytes);
-
-	if ((data->rd_data[0] != WIT_HDR_START)) {
-		LOG_DBG("First byte not header! Resetting # of bytes read.");
-		data->xfer_bytes = 0;
-		return;
+	if (uart_irq_tx_ready(uart_dev)) {
+		hwt905ttl_uart_isr_tx(uart_dev, dev);
 	}
-
-	if (data->xfer_bytes != WIT_MEASU_READ_LEN) {
-		return;
-	}
-
-	data_type = data->rd_data[1];
-	if (data_type < WIT_TYPE_START || data_type > WIT_TYPE_END) {
-		LOG_ERR("Data type out of range: 0x%02X", data->rd_data[1]);
-		data->xfer_bytes = 0;
-		return;
-	}
-
-	if (hwt905ttl_checksum_compare(data->rd_data)) {
-		data->xfer_bytes = 0;
-		return;
-	}
-
-	memcpy(data->data[data_type - WIT_TYPE_OFFSET], data->rd_data, WIT_MEASU_READ_LEN);
-
-	hwt905ttl_uart_flush(uart_dev);
-	data->xfer_bytes = 0;
 }
 
 static int hwt905ttl_init(const struct device *dev)
 {
 	const struct hwt905ttl_cfg *cfg = dev->config;
+	struct hwt905ttl_data *data = dev->data;
 	int ret = 0;
 
 	if (!device_is_ready(cfg->uart_dev)) {
@@ -450,12 +575,16 @@ static int hwt905ttl_init(const struct device *dev)
 		if (ret == -ENOTSUP) {
 			LOG_ERR("Interrupt-driven UART API support not enabled");
 		} else if (ret == -ENOSYS) {
-			LOG_ERR("UART device does not support interrupt-driven API");
+			LOG_ERR("UART device does not support interrupt-driven "
+				"API");
 		} else {
 			LOG_ERR("Error setting UART callback: %d", ret);
 		}
 		return ret;
 	}
+
+	k_sem_init(&data->tx_data.tx_done, 0, 1);
+	k_sem_init(&data->rx_data.read_done, 0, 1);
 
 	uart_irq_rx_enable(cfg->uart_dev);
 

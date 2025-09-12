@@ -16,17 +16,17 @@
 /* ------------------------------------------------------------------------- */
 
 /* Data write length */
-#define WIT_DATA_WRITE_LEN      5
+#define WIT_DATA_WRITE_LEN		5
 
 /* Size of a measurement */
-#define WIT_MEASU_READ_LEN      11
+#define WIT_MEASU_READ_LEN		11
 
 /* Data frame header byte */
-#define WIT_HDR_START           0x55
+#define WIT_HDR_START			0x55
 
 /* Command frame header bytes */
-#define WIT_CMD_HEAD1           0xFF
-#define WIT_CMD_HEAD2           0xAA
+#define WIT_CMD_HEAD1			0xFF
+#define WIT_CMD_HEAD2			0xAA
 
 /* ------------------------------------------------------------------------- */
 /* Register addresses                                                        */
@@ -136,7 +136,7 @@ enum wit_register {
 };
 
 /* ------------------------------------------------------------------------- */
-/* Data-type codes in data frames                                             */
+/* Data-type codes in data frames                                            */
 /* ------------------------------------------------------------------------- */
 enum wit_data_type {
 	WIT_TYPE_TIME     = 0x50, /* Time: YY MM DD HH MN SS MS */
@@ -153,13 +153,13 @@ enum wit_data_type {
 	WIT_TYPE_READ_REG = 0x5F, /* Read-register reply */
 };
 
-#define WIT_TYPE_OFFSET WIT_TYPE_TIME
-#define WIT_TYPE_START WIT_TYPE_TIME
-#define WIT_TYPE_END   WIT_TYPE_READ_REG
-#define WIT_TYPE_COUNT (WIT_TYPE_END - WIT_TYPE_START + 1)
+#define WIT_TYPE_OFFSET			WIT_TYPE_TIME
+#define WIT_TYPE_START			WIT_TYPE_TIME
+#define WIT_TYPE_END			WIT_TYPE_READ_REG
+#define WIT_TYPE_COUNT			(WIT_TYPE_END - WIT_TYPE_START + 1)
 
 /* ------------------------------------------------------------------------- */
-/* RSW (Output content) bitmasks                                              */
+/* RSW (Output content) bitmasks                                             */
 /* ------------------------------------------------------------------------- */
 enum wit_rsw_mask {
 	WIT_RSW_TIME     = BIT(0),  /* TIME      (0x50) */
@@ -176,7 +176,7 @@ enum wit_rsw_mask {
 };
 
 /* ------------------------------------------------------------------------- */
-/* Output rate (RRATE) values                                                  */
+/* Output rate (RRATE) values                                                */
 /* ------------------------------------------------------------------------- */
 enum wit_output_rate {
 	WIT_RRATE_0_2HZ      = 0x01,
@@ -194,7 +194,7 @@ enum wit_output_rate {
 };
 
 /* ------------------------------------------------------------------------- */
-/* Serial baud-rate (BAUD) values                                              */
+/* Serial baud-rate (BAUD) values                                            */
 /* ------------------------------------------------------------------------- */
 enum wit_baud_rate {
 	WIT_BAUD_4800     = 0x01,
@@ -209,7 +209,7 @@ enum wit_baud_rate {
 };
 
 /* ------------------------------------------------------------------------- */
-/* Calibration mode (CALSW)                                                    */
+/* Calibration mode (CALSW)                                                  */
 /* ------------------------------------------------------------------------- */
 enum wit_calibration_mode {
 	WIT_CAL_NORMAL         = 0x00,
@@ -222,7 +222,7 @@ enum wit_calibration_mode {
 };
 
 /* ------------------------------------------------------------------------- */
-/* Port modes (D0MODE-D3MODE)                                                  */
+/* Port modes (D0MODE-D3MODE)                                                */
 /* ------------------------------------------------------------------------- */
 enum wit_port_mode {
 	WIT_PORT_ANALOG_IN     = 0x0, /* Analog input */
@@ -233,7 +233,7 @@ enum wit_port_mode {
 };
 
 /* ------------------------------------------------------------------------- */
-/* Accelerometer range (ACCRANGE)                                              */
+/* Accelerometer range (ACCRANGE)                                            */
 /* ------------------------------------------------------------------------- */
 enum wit_acc_range {
 	WIT_ACC_2G  = 0x0,
@@ -241,12 +241,12 @@ enum wit_acc_range {
 };
 
 /* ------------------------------------------------------------------------- */
-/* Gyro range (GYRORANGE)                                                      */
+/* Gyro range (GYRORANGE)                                                    */
 /* ------------------------------------------------------------------------- */
 #define WIT_GYRO_RANGE_2000DPS  0x3U /* Fixed +/- 2000 deg/s */
 
 /* ------------------------------------------------------------------------- */
-/* Filter bandwidth (BANDWIDTH)                                                */
+/* Filter bandwidth (BANDWIDTH)                                              */
 /* ------------------------------------------------------------------------- */
 enum wit_bandwidth {
 	WIT_BW_256HZ = 0x0,
@@ -307,7 +307,7 @@ enum wit_alarm_level {
 };
 
 /* ------------------------------------------------------------------------- */
-/* GPS time zones                                                             */
+/* GPS time zones                                                            */
 /* ------------------------------------------------------------------------- */
 enum wit_timezone {
 	WIT_TZ_UTC_MINUS_12 = 0x00,
