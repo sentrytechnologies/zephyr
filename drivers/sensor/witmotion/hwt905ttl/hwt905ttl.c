@@ -19,7 +19,7 @@
 
 #include "wit-protocol.h"
 
-LOG_MODULE_REGISTER(hwt905ttl_sensor, LOG_LEVEL_DBG);
+LOG_MODULE_REGISTER(hwt905ttl_sensor, CONFIG_SENSOR_LOG_LEVEL);
 
 /*
  * Empirical measurements show that after every packet write, hwt905ttl needs at least 3ms to
@@ -256,6 +256,24 @@ static int hwt905ttl_attr_get(const struct device *dev, enum sensor_channel chan
 		}
 
 		return hwt905ttl_rrate_value_from_code(value, val);
+	case SENSOR_ATTR_CALIBRATION: {
+		if (chan < SENSOR_CHAN_ACCEL_X || chan > SENSOR_CHAN_ACCEL_XYZ) {
+			return -ENOTSUP;
+		}
+
+		ret = hwt905ttl_read(dev, WIT_REG_CALSW, &value);
+		val->val1 = value;
+		return ret;
+	}
+	case SENSOR_ATTR_FEATURE_MASK:
+		if (chan != SENSOR_CHAN_ALL) {
+			return -ENOTSUP;
+		}
+
+		/* Check enum wit_rsw_mask for interpertation of configuration values */
+		ret = hwt905ttl_read(dev, WIT_REG_RSW, &value);
+		val->val1 = value;
+		return ret;
 	default:
 		return -ENOTSUP;
 	}
@@ -276,6 +294,21 @@ static int hwt905ttl_attr_set(const struct device *dev, enum sensor_channel chan
 
 		return hwt905ttl_send_command(dev, WIT_REG_RRATE, code);
 	}
+	case SENSOR_ATTR_CALIBRATION: {
+		if (chan < SENSOR_CHAN_ACCEL_X || chan > SENSOR_CHAN_ACCEL_XYZ || val->val1 != 1 ||
+		    val->val2 != 0) {
+			return -ENOTSUP;
+		}
+
+		return hwt905ttl_send_command(dev, WIT_REG_CALSW, WIT_CAL_ACCEL_AUTO);
+	}
+	case SENSOR_ATTR_FEATURE_MASK:
+		if (chan != SENSOR_CHAN_ALL) {
+			return -ENOTSUP;
+		}
+
+		/* Check enum wit_rsw_mask for valid configuration values */
+		return hwt905ttl_send_command(dev, WIT_REG_RSW, val->val1);
 	default:
 		return -ENOTSUP;
 	}
