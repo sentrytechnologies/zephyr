@@ -1,6 +1,12 @@
 # Copyright (c) 2025 Sentry Technologies
 # SPDX-License-Identifier: Apache-2.0
 
+config WITMOTION
+	bool "WIT Motion Sensors"
+	default n
+	help
+	  Enable driver support for WIT Motion sensors.
+
 # zephyr-keep-sorted-start
 source "drivers/sensor/witmotion/hwt905ttl/Kconfig"
 # zephyr-keep-sorted-stop

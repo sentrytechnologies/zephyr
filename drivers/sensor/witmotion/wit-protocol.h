@@ -10,6 +10,7 @@
 #define ZEPHYR_DRIVERS_SENSOR_WITMOTION_WIT_PROTOCOL_H_
 
 #include <zephyr/sys/util.h>
+#include <zephyr/drivers/sensor.h>
 
 /* ------------------------------------------------------------------------- */
 /* Frame and command constants                                               */
@@ -157,6 +158,12 @@ enum wit_data_type {
 #define WIT_TYPE_START			WIT_TYPE_TIME
 #define WIT_TYPE_END			WIT_TYPE_READ_REG
 #define WIT_TYPE_COUNT			(WIT_TYPE_END - WIT_TYPE_START + 1)
+
+enum wit_sensor_channel {
+	SENSOR_CHAN_HWT905TTL_ANG_X = SENSOR_CHAN_PRIV_START,
+	SENSOR_CHAN_HWT905TTL_ANG_Y,
+	SENSOR_CHAN_HWT905TTL_ANG_Z,
+};
 
 /* ------------------------------------------------------------------------- */
 /* RSW (Output content) bitmasks                                             */

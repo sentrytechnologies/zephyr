@@ -4,6 +4,7 @@
 config HWT905TTL
 	bool "WIT Motion HWT905-TTL IMU"
 	default n
+	depends on WITMOTION
 	depends on DT_HAS_WITMOTION_HWT905TTL_ENABLED
 	depends on UART_INTERRUPT_DRIVEN
 	help

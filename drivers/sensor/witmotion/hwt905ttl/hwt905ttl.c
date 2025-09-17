@@ -17,7 +17,7 @@
 #include <zephyr/sys/byteorder.h>
 #include <zephyr/drivers/sensor.h>
 
-#include "wit-protocol.h"
+#include <sensor/witmotion/wit-protocol.h>
 
 LOG_MODULE_REGISTER(hwt905ttl_sensor, CONFIG_SENSOR_LOG_LEVEL);
 
@@ -36,10 +36,23 @@ static const uint8_t hwt905ttl_save_buffer[] = {WIT_CMD_HEAD1, WIT_CMD_HEAD2, WI
 						0x00};
 
 static enum sensor_channel hwt905ttl_supported_channels[] = {
-	SENSOR_CHAN_ACCEL_X,  SENSOR_CHAN_ACCEL_Y, SENSOR_CHAN_ACCEL_Z, SENSOR_CHAN_ACCEL_XYZ,
-	SENSOR_CHAN_GYRO_X,   SENSOR_CHAN_GYRO_Y,  SENSOR_CHAN_GYRO_Z,  SENSOR_CHAN_GYRO_XYZ,
-	SENSOR_CHAN_MAGN_X,   SENSOR_CHAN_MAGN_Y,  SENSOR_CHAN_MAGN_Z,  SENSOR_CHAN_MAGN_XYZ,
-	SENSOR_CHAN_DIE_TEMP, SENSOR_CHAN_ALL,
+	SENSOR_CHAN_ACCEL_X,
+	SENSOR_CHAN_ACCEL_Y,
+	SENSOR_CHAN_ACCEL_Z,
+	SENSOR_CHAN_ACCEL_XYZ,
+	SENSOR_CHAN_GYRO_X,
+	SENSOR_CHAN_GYRO_Y,
+	SENSOR_CHAN_GYRO_Z,
+	SENSOR_CHAN_GYRO_XYZ,
+	SENSOR_CHAN_MAGN_X,
+	SENSOR_CHAN_MAGN_Y,
+	SENSOR_CHAN_MAGN_Z,
+	SENSOR_CHAN_MAGN_XYZ,
+	SENSOR_CHAN_HWT905TTL_ANG_X,
+	SENSOR_CHAN_HWT905TTL_ANG_Y,
+	SENSOR_CHAN_HWT905TTL_ANG_Z,
+	SENSOR_CHAN_DIE_TEMP,
+	SENSOR_CHAN_ALL,
 };
 
 struct hwt905ttl_measurement_acc {
@@ -60,10 +73,17 @@ struct hwt905ttl_measurement_magn {
 	struct sensor_value hz;
 };
 
+struct hwt905ttl_measurement_ang {
+	struct sensor_value angx;
+	struct sensor_value angy;
+	struct sensor_value angz;
+};
+
 struct hwt905ttl_measurements {
 	struct hwt905ttl_measurement_acc acc;
 	struct hwt905ttl_measurement_gyro gyro;
 	struct hwt905ttl_measurement_magn magn;
+	struct hwt905ttl_measurement_ang ang;
 	struct sensor_value temp;
 };
 
@@ -250,21 +270,48 @@ static int hwt905ttl_attr_get(const struct device *dev, enum sensor_channel chan
 
 	switch (attr) {
 	case SENSOR_ATTR_SAMPLING_FREQUENCY:
+		if (chan != SENSOR_CHAN_ALL) {
+			return -ENOTSUP;
+		}
+
 		ret = hwt905ttl_read(dev, WIT_REG_RRATE, &value);
 		if (ret) {
 			return ret;
 		}
 
 		return hwt905ttl_rrate_value_from_code(value, val);
-	case SENSOR_ATTR_CALIBRATION: {
-		if (chan < SENSOR_CHAN_ACCEL_X || chan > SENSOR_CHAN_ACCEL_XYZ) {
+	case SENSOR_ATTR_CALIBRATION:
+		if (chan > SENSOR_CHAN_ACCEL_XYZ &&
+		    chan < (enum sensor_channel)SENSOR_CHAN_HWT905TTL_ANG_X) {
 			return -ENOTSUP;
 		}
 
 		ret = hwt905ttl_read(dev, WIT_REG_CALSW, &value);
-		val->val1 = value;
-		return ret;
-	}
+		if (ret) {
+			return ret;
+		}
+
+		switch (value) {
+		case WIT_CAL_NORMAL:
+			val->val1 = 0;
+			return 0;
+		case WIT_CAL_ACCEL_AUTO:
+			if (chan >= SENSOR_CHAN_ACCEL_X && chan <= SENSOR_CHAN_ACCEL_XYZ) {
+				val->val1 = 1;
+			} else {
+				val->val1 = 0;
+			}
+			return 0;
+		case WIT_CAL_MAG_SPHERE:
+			if (chan == (enum sensor_channel)SENSOR_CHAN_HWT905TTL_ANG_Z) {
+				val->val1 = 1;
+			} else {
+				val->val1 = 0;
+			}
+			return 0;
+		default:
+			return -ENOTSUP;
+		}
 	case SENSOR_ATTR_FEATURE_MASK:
 		if (chan != SENSOR_CHAN_ALL) {
 			return -ENOTSUP;
@@ -287,6 +334,10 @@ static int hwt905ttl_attr_set(const struct device *dev, enum sensor_channel chan
 
 	switch (attr) {
 	case SENSOR_ATTR_SAMPLING_FREQUENCY: {
+		if (chan != SENSOR_CHAN_ALL) {
+			return -ENOTSUP;
+		}
+
 		ret = hwt905ttl_rrate_code_from_value(val, &code);
 		if (ret) {
 			return ret;
@@ -295,12 +346,27 @@ static int hwt905ttl_attr_set(const struct device *dev, enum sensor_channel chan
 		return hwt905ttl_send_command(dev, WIT_REG_RRATE, code);
 	}
 	case SENSOR_ATTR_CALIBRATION: {
-		if (chan < SENSOR_CHAN_ACCEL_X || chan > SENSOR_CHAN_ACCEL_XYZ || val->val1 != 1 ||
-		    val->val2 != 0) {
+		if (val->val2 != 0) {
+			return -ENOTSUP;
+		}
+		if (val->val1 == 0) {
+			return hwt905ttl_send_command(dev, WIT_REG_CALSW, WIT_CAL_NORMAL);
+		} else if (val->val1 != 1) {
 			return -ENOTSUP;
 		}
 
-		return hwt905ttl_send_command(dev, WIT_REG_CALSW, WIT_CAL_ACCEL_AUTO);
+		if (chan >= SENSOR_CHAN_ACCEL_X && chan <= SENSOR_CHAN_ACCEL_XYZ) {
+			return hwt905ttl_send_command(dev, WIT_REG_CALSW, WIT_CAL_ACCEL_AUTO);
+		}
+		if (chan >= (enum sensor_channel)SENSOR_CHAN_HWT905TTL_ANG_X &&
+		    chan <= (enum sensor_channel)SENSOR_CHAN_HWT905TTL_ANG_Y) {
+			return hwt905ttl_send_command(dev, WIT_REG_CALSW, WIT_CAL_REF_ANGLE);
+		}
+		if (chan == (enum sensor_channel)SENSOR_CHAN_HWT905TTL_ANG_Z) {
+			return hwt905ttl_send_command(dev, WIT_REG_CALSW, WIT_CAL_MAG_SPHERE);
+		}
+
+		return -ENOTSUP;
 	}
 	case SENSOR_ATTR_FEATURE_MASK:
 		if (chan != SENSOR_CHAN_ALL) {
@@ -355,6 +421,20 @@ static int hwt905ttl_poll_magn(const struct device *dev)
 	return 0;
 }
 
+static int hwt905ttl_poll_ang(const struct device *dev)
+{
+	struct hwt905ttl_data *data = dev->data;
+	struct hwt905ttl_measurements *measu = &data->measu;
+	static const double aux = (double)180 / 32768 * 100000LL; /* converts output to 10 udeg */
+	const int16_t *raw_16 = (int16_t *)data->rx_data.raw[WIT_TYPE_ANGLE - WIT_TYPE_OFFSET];
+
+	sensor_10udegrees_to_rad((double)sys_le16_to_cpu(raw_16[1]) * aux, &measu->ang.angx);
+	sensor_10udegrees_to_rad((double)sys_le16_to_cpu(raw_16[2]) * aux, &measu->ang.angy);
+	sensor_10udegrees_to_rad((double)sys_le16_to_cpu(raw_16[3]) * aux, &measu->ang.angz);
+
+	return 0;
+}
+
 static int hwt905ttl_poll_temp(const struct device *dev)
 {
 	int ret;
@@ -402,6 +482,14 @@ static int hwt905ttl_poll_data(const struct device *dev, enum sensor_channel cha
 			return ret;
 		}
 		break;
+	case (enum sensor_channel)SENSOR_CHAN_HWT905TTL_ANG_X:
+	case (enum sensor_channel)SENSOR_CHAN_HWT905TTL_ANG_Y:
+	case (enum sensor_channel)SENSOR_CHAN_HWT905TTL_ANG_Z:
+		ret = hwt905ttl_poll_ang(dev);
+		if (ret) {
+			return ret;
+		}
+		break;
 	case SENSOR_CHAN_DIE_TEMP:
 		ret = hwt905ttl_poll_temp(dev);
 		if (ret) {
@@ -421,6 +509,11 @@ static int hwt905ttl_poll_data(const struct device *dev, enum sensor_channel cha
 		if (ret) {
 			return ret;
 		}
+		ret = hwt905ttl_poll_ang(dev);
+		if (ret) {
+			return ret;
+		}
+		break;
 		ret = hwt905ttl_poll_temp(dev);
 		if (ret) {
 			return ret;
@@ -479,6 +572,15 @@ static int hwt905ttl_channel_get(const struct device *dev, enum sensor_channel c
 		val[1] = measu->magn.hy;
 		val[2] = measu->magn.hz;
 		break;
+	case (enum sensor_channel)SENSOR_CHAN_HWT905TTL_ANG_X:
+		*val = measu->ang.angx;
+		break;
+	case (enum sensor_channel)SENSOR_CHAN_HWT905TTL_ANG_Y:
+		*val = measu->ang.angy;
+		break;
+	case (enum sensor_channel)SENSOR_CHAN_HWT905TTL_ANG_Z:
+		*val = measu->ang.angz;
+		break;
 	case SENSOR_CHAN_DIE_TEMP:
 		*val = measu->temp;
 		break;
@@ -500,6 +602,7 @@ static int hwt905ttl_sample_fetch(const struct device *dev, enum sensor_channel 
 	return -ENOTSUP;
 }
 
+/* TODO: triggers */
 static DEVICE_API(sensor, hwt905ttl_api_funcs) = {
 	.sample_fetch = hwt905ttl_sample_fetch,
 	.channel_get = hwt905ttl_channel_get,
