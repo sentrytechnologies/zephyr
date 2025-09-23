@@ -105,6 +105,13 @@ struct hwt905ttl_data {
 	struct hwt905ttl_rx_data rx_data;
 	struct hwt905ttl_tx_data tx_data;
 	struct hwt905ttl_measurements measu;
+#ifdef CONFIG_HWT905TTL_TRIGGER
+	/* Trigger support (global workqueue only) */
+	const struct device *dev;
+	struct sensor_trigger trig;
+	sensor_trigger_handler_t handler;
+	struct k_work work;
+#endif /* CONFIG_HWT905TTL_TRIGGER */
 };
 
 struct hwt905ttl_cfg {
@@ -114,6 +121,11 @@ struct hwt905ttl_cfg {
 struct hwt905ttl_rrate_map_entry {
 	uint32_t freq_uhz;
 	enum wit_output_rate code;
+};
+
+struct hwt905ttl_chan_map_entry {
+	enum sensor_channel chan;
+	enum wit_data_type type;
 };
 
 /* clang-format off */
@@ -129,6 +141,25 @@ static const struct hwt905ttl_rrate_map_entry hwt905ttl_rrate_map[] = {
 	{50000000U,	WIT_RRATE_50HZ},
 	{100000000U,	WIT_RRATE_100HZ},
 	{200000000U,	WIT_RRATE_200HZ},
+};
+
+static const struct hwt905ttl_chan_map_entry hwt905ttl_chan_map[] = {
+	{SENSOR_CHAN_ACCEL_X					, WIT_TYPE_ACCEL},
+	{SENSOR_CHAN_ACCEL_Y					, WIT_TYPE_ACCEL},
+	{SENSOR_CHAN_ACCEL_Z					, WIT_TYPE_ACCEL},
+	{SENSOR_CHAN_ACCEL_XYZ					, WIT_TYPE_ACCEL},
+	{SENSOR_CHAN_GYRO_X					, WIT_TYPE_GYRO},
+	{SENSOR_CHAN_GYRO_Y					, WIT_TYPE_GYRO},
+	{SENSOR_CHAN_GYRO_Z					, WIT_TYPE_GYRO},
+	{SENSOR_CHAN_GYRO_XYZ					, WIT_TYPE_GYRO},
+	{SENSOR_CHAN_MAGN_X					, WIT_TYPE_MAG},
+	{SENSOR_CHAN_MAGN_Y					, WIT_TYPE_MAG},
+	{SENSOR_CHAN_MAGN_Z					, WIT_TYPE_MAG},
+	{SENSOR_CHAN_MAGN_XYZ					, WIT_TYPE_MAG},
+	{(enum sensor_channel)SENSOR_CHAN_HWT905TTL_ANG_X	, WIT_TYPE_ANGLE},
+	{(enum sensor_channel)SENSOR_CHAN_HWT905TTL_ANG_Y	, WIT_TYPE_ANGLE},
+	{(enum sensor_channel)SENSOR_CHAN_HWT905TTL_ANG_Z	, WIT_TYPE_ANGLE},
+	{SENSOR_CHAN_DIE_TEMP					, WIT_TYPE_ACCEL},
 };
 /* clang-format on */
 
@@ -165,6 +196,30 @@ static int hwt905ttl_rrate_value_from_code(uint8_t code, struct sensor_value *ou
 		}
 	}
 	return -ENOTSUP;
+}
+
+static int hwt905ttl_channel_to_type(enum sensor_channel chan, enum wit_data_type *type)
+{
+	ARRAY_FOR_EACH(hwt905ttl_chan_map, i) {
+		if (hwt905ttl_chan_map[i].chan == chan) {
+			*type = hwt905ttl_chan_map[i].type;
+			return 0;
+		}
+	}
+
+	return -EINVAL;
+}
+
+static int hwt905ttl_type_to_channel(enum wit_data_type type, enum sensor_channel *chan)
+{
+	ARRAY_FOR_EACH(hwt905ttl_chan_map, i) {
+		if (hwt905ttl_chan_map[i].type == type) {
+			*chan = hwt905ttl_chan_map[i].chan;
+			return 0;
+		}
+	}
+
+	return -EINVAL;
 }
 
 static void hwt905ttl_uart_flush(const struct device *uart_dev)
@@ -645,12 +700,44 @@ static int hwt905ttl_sample_fetch(const struct device *dev, enum sensor_channel 
 	return -ENOTSUP;
 }
 
-/* TODO: triggers */
+#ifdef CONFIG_HWT905TTL_TRIGGER
+static void hwt905ttl_trigger_work_handler(struct k_work *work)
+{
+	struct hwt905ttl_data *data = CONTAINER_OF(work, struct hwt905ttl_data, work);
+
+	if (data->handler) {
+		data->handler(data->dev, &data->trig);
+	}
+}
+
+static int hwt905ttl_trigger_set(const struct device *dev, const struct sensor_trigger *trig,
+				 sensor_trigger_handler_t handler)
+{
+	enum wit_data_type type_expected;
+	struct hwt905ttl_data *data = dev->data;
+
+	if (trig->type != SENSOR_TRIG_DATA_READY) {
+		return -ENOTSUP;
+	}
+
+	if (trig->chan == SENSOR_CHAN_ALL ||
+	    !hwt905ttl_channel_to_type(trig->chan, &type_expected)) {
+		data->trig = *trig;
+		data->handler = handler;
+		return 0;
+	}
+
+	return -ENOTSUP;
+}
+#endif /* CONFIG_HWT905TTL_TRIGGER */
 static DEVICE_API(sensor, hwt905ttl_api_funcs) = {
 	.sample_fetch = hwt905ttl_sample_fetch,
 	.channel_get = hwt905ttl_channel_get,
 	.attr_set = hwt905ttl_attr_set,
 	.attr_get = hwt905ttl_attr_get,
+#ifdef CONFIG_HWT905TTL_TRIGGER
+	.trigger_set = hwt905ttl_trigger_set,
+#endif
 };
 
 static void hwt905ttl_uart_isr_rx(const struct device *uart_dev, const struct device *dev)
@@ -692,6 +779,18 @@ static void hwt905ttl_uart_isr_rx(const struct device *uart_dev, const struct de
 
 	hwt905ttl_uart_flush(uart_dev);
 	rx_data->xfer_bytes = 0;
+
+#ifdef CONFIG_HWT905TTL_TRIGGER
+	enum sensor_channel chan;
+
+	if (hwt905ttl_type_to_channel(data_type, &chan)) {
+		return;
+	};
+
+	if (data->handler && (data->trig.chan == SENSOR_CHAN_ALL || chan == data->trig.chan)) {
+		k_work_submit(&data->work);
+	}
+#endif /* CONFIG_HWT905TTL_TRIGGER */
 }
 
 static void hwt905ttl_uart_isr_tx(const struct device *uart_dev, const struct device *dev)
@@ -764,6 +863,11 @@ static int hwt905ttl_init(const struct device *dev)
 
 	k_sem_init(&data->tx_data.tx_done, 0, 1);
 	k_sem_init(&data->rx_data.read_done, 0, 1);
+
+#ifdef CONFIG_HWT905TTL_TRIGGER
+	data->dev = dev;
+	k_work_init(&data->work, hwt905ttl_trigger_work_handler);
+#endif /* CONFIG_HWT905TTL_TRIGGER */
 
 	uart_irq_rx_enable(cfg->uart_dev);
 

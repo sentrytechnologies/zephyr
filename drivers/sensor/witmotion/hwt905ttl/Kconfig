@@ -2,10 +2,17 @@
 # SPDX-License-Identifier: Apache-2.0
 
 config HWT905TTL
-	bool "WIT Motion HWT905-TTL IMU"
-	default n
-	depends on WITMOTION
-	depends on DT_HAS_WITMOTION_HWT905TTL_ENABLED
-	depends on UART_INTERRUPT_DRIVEN
-	help
-	  Enable driver for WIT Motion HWT905-TTL IMU.
+    bool "WIT Motion HWT905-TTL IMU"
+    default n
+    depends on WITMOTION
+    depends on DT_HAS_WITMOTION_HWT905TTL_ENABLED
+    depends on UART_INTERRUPT_DRIVEN
+    help
+      Enable driver for WIT Motion HWT905-TTL IMU.
+
+if HWT905TTL
+
+config HWT905TTL_TRIGGER
+    bool "Enable trigger (global workqueue)"
+
+endif # HWT905TTL
