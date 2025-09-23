@@ -35,7 +35,7 @@ static const uint8_t hwt905ttl_unlock_buffer[] = {WIT_CMD_HEAD1, WIT_CMD_HEAD2, 
 static const uint8_t hwt905ttl_save_buffer[] = {WIT_CMD_HEAD1, WIT_CMD_HEAD2, WIT_REG_SAVE, 0x00,
 						0x00};
 
-static enum sensor_channel hwt905ttl_supported_channels[] = {
+static const enum sensor_channel hwt905ttl_supported_channels[] = {
 	SENSOR_CHAN_ACCEL_X,
 	SENSOR_CHAN_ACCEL_Y,
 	SENSOR_CHAN_ACCEL_Z,
@@ -219,7 +219,7 @@ static int hwt905ttl_send_command(const struct device *dev, enum wit_register re
 	local_cmd[0] = WIT_CMD_HEAD1;
 	local_cmd[1] = WIT_CMD_HEAD2;
 	local_cmd[2] = reg;
-	*(uint16_t *)(&local_cmd[3]) = sys_cpu_to_le16(value);
+	sys_put_le16(value, &local_cmd[3]);
 
 	ret = hwt905ttl_write(dev, hwt905ttl_unlock_buffer);
 	if (ret) {
@@ -384,12 +384,19 @@ static int hwt905ttl_poll_acc(const struct device *dev)
 {
 	struct hwt905ttl_data *data = dev->data;
 	struct hwt905ttl_measurements *measu = &data->measu;
-	static const double aux = (double)16LL / 32768LL * 1000000LL; /* converts output to ug */
-	const int16_t *raw_16 = (int16_t *)data->rx_data.raw[WIT_TYPE_ACCEL - WIT_TYPE_OFFSET];
+	const uint8_t *frm = data->rx_data.raw[WIT_TYPE_ACCEL - WIT_TYPE_OFFSET];
+	/* ug = raw * 16 * 1e6 / 32768 = raw * 16000000 >> 15 */
+	int16_t ax_raw = (int16_t)sys_get_le16(&frm[2]);
+	int16_t ay_raw = (int16_t)sys_get_le16(&frm[4]);
+	int16_t az_raw = (int16_t)sys_get_le16(&frm[6]);
 
-	sensor_ug_to_ms2((double)sys_le16_to_cpu(raw_16[1]) * aux, &measu->acc.ax);
-	sensor_ug_to_ms2((double)sys_le16_to_cpu(raw_16[2]) * aux, &measu->acc.ay);
-	sensor_ug_to_ms2((double)sys_le16_to_cpu(raw_16[3]) * aux, &measu->acc.az);
+	int32_t ax_ug = (int32_t)(((int64_t)ax_raw * 16000000) >> 15);
+	int32_t ay_ug = (int32_t)(((int64_t)ay_raw * 16000000) >> 15);
+	int32_t az_ug = (int32_t)(((int64_t)az_raw * 16000000) >> 15);
+
+	sensor_ug_to_ms2(ax_ug, &measu->acc.ax);
+	sensor_ug_to_ms2(ay_ug, &measu->acc.ay);
+	sensor_ug_to_ms2(az_ug, &measu->acc.az);
 
 	return 0;
 }
@@ -398,25 +405,51 @@ static int hwt905ttl_poll_gyro(const struct device *dev)
 {
 	struct hwt905ttl_data *data = dev->data;
 	struct hwt905ttl_measurements *measu = &data->measu;
-	static const double aux = (double)2000 / 32768 * 100000LL; /* converts output to 10 udeg */
-	const int16_t *raw_16 = (int16_t *)data->rx_data.raw[WIT_TYPE_GYRO - WIT_TYPE_OFFSET];
+	const uint8_t *frm = data->rx_data.raw[WIT_TYPE_GYRO - WIT_TYPE_OFFSET];
+	/* 10 µdeg/s = raw * 2000 * 1e5 / 32768 = raw * 200000000 >> 15 */
+	int16_t wx_raw = (int16_t)sys_get_le16(&frm[2]);
+	int16_t wy_raw = (int16_t)sys_get_le16(&frm[4]);
+	int16_t wz_raw = (int16_t)sys_get_le16(&frm[6]);
 
-	sensor_10udegrees_to_rad((double)sys_le16_to_cpu(raw_16[1]) * aux, &measu->gyro.wx);
-	sensor_10udegrees_to_rad((double)sys_le16_to_cpu(raw_16[2]) * aux, &measu->gyro.wy);
-	sensor_10udegrees_to_rad((double)sys_le16_to_cpu(raw_16[3]) * aux, &measu->gyro.wz);
+	int32_t wx_10udps = (int32_t)(((int64_t)wx_raw * 200000000) >> 15);
+	int32_t wy_10udps = (int32_t)(((int64_t)wy_raw * 200000000) >> 15);
+	int32_t wz_10udps = (int32_t)(((int64_t)wz_raw * 200000000) >> 15);
+
+	sensor_10udegrees_to_rad(wx_10udps, &measu->gyro.wx);
+	sensor_10udegrees_to_rad(wy_10udps, &measu->gyro.wy);
+	sensor_10udegrees_to_rad(wz_10udps, &measu->gyro.wz);
 
 	return 0;
 }
 
 static int hwt905ttl_poll_magn(const struct device *dev)
 {
+	int ret;
 	struct hwt905ttl_data *data = dev->data;
 	struct hwt905ttl_measurements *measu = &data->measu;
-	const int16_t *raw_16 = (int16_t *)data->rx_data.raw[WIT_TYPE_MAG - WIT_TYPE_OFFSET];
+	const uint8_t *frm = data->rx_data.raw[WIT_TYPE_MAG - WIT_TYPE_OFFSET];
+	/* nT = raw * 13 */
+	int16_t hx_raw = (int16_t)sys_get_le16(&frm[2]);
+	int16_t hy_raw = (int16_t)sys_get_le16(&frm[4]);
+	int16_t hz_raw = (int16_t)sys_get_le16(&frm[6]);
 
-	measu->magn.hx.val1 = sys_le16_to_cpu(raw_16[1]);
-	measu->magn.hy.val1 = sys_le16_to_cpu(raw_16[2]);
-	measu->magn.hz.val1 = sys_le16_to_cpu(raw_16[3]);
+	int32_t hx_nt = (int32_t)hx_raw * 13 * 10;
+	int32_t hy_nt = (int32_t)hy_raw * 13 * 10;
+	int32_t hz_nt = (int32_t)hz_raw * 13 * 10;
+
+	/* G = 100000 nT */
+	ret = sensor_value_from_micro(&measu->magn.hx, hx_nt);
+	if (ret) {
+		return ret;
+	}
+	ret = sensor_value_from_micro(&measu->magn.hy, hy_nt);
+	if (ret) {
+		return ret;
+	}
+	ret = sensor_value_from_micro(&measu->magn.hz, hz_nt);
+	if (ret) {
+		return ret;
+	}
 
 	return 0;
 }
@@ -425,12 +458,19 @@ static int hwt905ttl_poll_ang(const struct device *dev)
 {
 	struct hwt905ttl_data *data = dev->data;
 	struct hwt905ttl_measurements *measu = &data->measu;
-	static const double aux = (double)180 / 32768 * 100000LL; /* converts output to 10 udeg */
-	const int16_t *raw_16 = (int16_t *)data->rx_data.raw[WIT_TYPE_ANGLE - WIT_TYPE_OFFSET];
+	const uint8_t *frm = data->rx_data.raw[WIT_TYPE_ANGLE - WIT_TYPE_OFFSET];
+	/* 10 µdeg = raw * 180 * 1e5 / 32768 = raw * 18000000 >> 15 */
+	int16_t angx_raw = (int16_t)sys_get_le16(&frm[2]);
+	int16_t angy_raw = (int16_t)sys_get_le16(&frm[4]);
+	int16_t angz_raw = (int16_t)sys_get_le16(&frm[6]);
 
-	sensor_10udegrees_to_rad((double)sys_le16_to_cpu(raw_16[1]) * aux, &measu->ang.angx);
-	sensor_10udegrees_to_rad((double)sys_le16_to_cpu(raw_16[2]) * aux, &measu->ang.angy);
-	sensor_10udegrees_to_rad((double)sys_le16_to_cpu(raw_16[3]) * aux, &measu->ang.angz);
+	int32_t angx_10udeg = (int32_t)(((int64_t)angx_raw * 18000000) >> 15);
+	int32_t angy_10udeg = (int32_t)(((int64_t)angy_raw * 18000000) >> 15);
+	int32_t angz_10udeg = (int32_t)(((int64_t)angz_raw * 18000000) >> 15);
+
+	sensor_10udegrees_to_rad(angx_10udeg, &measu->ang.angx);
+	sensor_10udegrees_to_rad(angy_10udeg, &measu->ang.angy);
+	sensor_10udegrees_to_rad(angz_10udeg, &measu->ang.angz);
 
 	return 0;
 }
@@ -440,9 +480,10 @@ static int hwt905ttl_poll_temp(const struct device *dev)
 	int ret;
 	struct hwt905ttl_data *data = dev->data;
 	struct hwt905ttl_measurements *measu = &data->measu;
-	const int16_t *raw_16 = (int16_t *)data->rx_data.raw[WIT_TYPE_ACCEL - WIT_TYPE_OFFSET];
+	const uint8_t *frm = data->rx_data.raw[WIT_TYPE_ACCEL - WIT_TYPE_OFFSET];
+	int16_t temp_raw = (int16_t)sys_get_le16(&frm[8]);
 
-	ret = sensor_value_from_double(&measu->temp, (double)sys_le16_to_cpu(raw_16[4]) / 100LL);
+	ret = sensor_value_from_double(&measu->temp, (double)temp_raw / 100.0);
 	if (ret) {
 		return ret;
 	}
