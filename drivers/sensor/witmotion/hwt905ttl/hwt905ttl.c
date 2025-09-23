@@ -454,7 +454,7 @@ static int hwt905ttl_poll_data(const struct device *dev, enum sensor_channel cha
 {
 	int ret;
 
-	switch (chan) {
+	switch ((int)chan) {
 	case SENSOR_CHAN_ACCEL_X:
 	case SENSOR_CHAN_ACCEL_Y:
 	case SENSOR_CHAN_ACCEL_Z:
@@ -513,7 +513,6 @@ static int hwt905ttl_poll_data(const struct device *dev, enum sensor_channel cha
 		if (ret) {
 			return ret;
 		}
-		break;
 		ret = hwt905ttl_poll_temp(dev);
 		if (ret) {
 			return ret;
@@ -532,7 +531,7 @@ static int hwt905ttl_channel_get(const struct device *dev, enum sensor_channel c
 	struct hwt905ttl_data *data = dev->data;
 	struct hwt905ttl_measurements *measu = &data->measu;
 
-	switch (chan) {
+	switch ((int)chan) {
 	case SENSOR_CHAN_ACCEL_X:
 		*val = measu->acc.ax;
 		break;
@@ -549,10 +548,13 @@ static int hwt905ttl_channel_get(const struct device *dev, enum sensor_channel c
 		break;
 	case SENSOR_CHAN_GYRO_X:
 		*val = measu->gyro.wx;
+		break;
 	case SENSOR_CHAN_GYRO_Y:
 		*val = measu->gyro.wy;
+		break;
 	case SENSOR_CHAN_GYRO_Z:
 		*val = measu->gyro.wz;
+		break;
 	case SENSOR_CHAN_GYRO_XYZ:
 		val[0] = measu->gyro.wx;
 		val[1] = measu->gyro.wy;
