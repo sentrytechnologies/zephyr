@@ -2358,6 +2358,13 @@ def _main(args):
         if args.annotate:
             for res in test.fmtd_failures:
                 annotate(res)
+            for res in test.case.result:
+                msg = res.text.replace('%', '%25').replace('\n', '%0A').replace('\r', '%0D')
+                print(
+                    (f'::error ' if res.type in ("error", "failure") else '::warning ') + \
+                    (f'::title={test.name}') + \
+                    (f'::{msg}')
+                )
 
         suite.add_testcase(test.case)
 
