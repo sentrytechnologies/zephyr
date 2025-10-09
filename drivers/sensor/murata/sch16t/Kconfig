@@ -1,0 +1,12 @@
+# Copyright (c) 2025 Sentry Technologies ApS
+# SPDX-License-Identifier: Apache-2.0
+
+config SCH16T
+	bool "SCH16T Combined Gyro Sensor and Accelerometer"
+	default y
+	depends on DT_HAS_MURATA_SCH16T_ENABLED
+	select SPI
+	select SPI_RTIO
+	select SENSOR_ASYNC_API
+	help
+	  Enable driver for SCH16T Combined Gyro Sensor and Accelerometer
