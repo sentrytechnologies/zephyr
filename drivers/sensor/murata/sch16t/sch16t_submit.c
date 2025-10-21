@@ -11,6 +11,7 @@
 #include "sch16t_bus.h"
 #include "sch16t_reg.h"
 #include "sch16t_submit.h"
+#include "sch16t_stream.h"
 #include "sch16t_decoder.h"
 
 LOG_MODULE_REGISTER(SCH16T_SUBMIT, CONFIG_SENSOR_LOG_LEVEL);
@@ -88,6 +89,8 @@ void sch16t_submit(const struct device *dev, struct rtio_iodev_sqe *iodev_sqe)
 
 	if (!cfg->is_streaming) {
 		sch16t_submit_single(dev);
+	} else if (IS_ENABLED(CONFIG_SCH16T_STREAM)) {
+		sch16t_stream_submit(dev);
 	} else {
 		LOG_ERR("streaming not supported (ret=%d)", -ENOTSUP);
 		rtio_iodev_sqe_err(iodev_sqe, -ENOTSUP);

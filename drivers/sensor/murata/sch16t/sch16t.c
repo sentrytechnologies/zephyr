@@ -15,6 +15,8 @@
 #include "sch16t_reg.h"
 #include "sch16t_bus.h"
 #include "sch16t_submit.h"
+#include "sch16t_stream.h"
+#include "sch16t_submit.h"
 #include "sch16t_decoder.h"
 
 LOG_MODULE_REGISTER(SCH16T, CONFIG_SENSOR_LOG_LEVEL);
@@ -148,6 +150,13 @@ static int sch16t_init(const struct device *dev)
 	ret = sch16t_start_up(dev);
 	if (ret) {
 		return ret;
+	}
+
+	if (IS_ENABLED(CONFIG_SCH16T_STREAM)) {
+		ret = sch16t_stream_init(dev);
+		if (ret) {
+			return ret;
+		}
 	}
 
 	return 0;
