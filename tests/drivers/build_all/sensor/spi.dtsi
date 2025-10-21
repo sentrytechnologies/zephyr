@@ -488,4 +488,14 @@ test_spi_adxl345: adxl345@3a {
 	spi-max-frequency = <0>;
 	int1-gpios = <&test_gpio 0 0>;
 	fifo-watermark = <1>;
+
+test_spi_sch16t: sch16t@3b {
+	compatible = "murata,sch16t";
+	reg = <0x3b>;
+	spi-max-frequency = <0>;
+	decimation = <4>;
+	acc-dynamic-range = <4>;
+	rate-dynamic-range = <4>;
+	int-gpios = <&test_gpio 0 0>;
+	reset-gpios = <&test_gpio 0 0>;
 };
