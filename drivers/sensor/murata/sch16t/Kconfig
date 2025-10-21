@@ -10,3 +10,14 @@ config SCH16T
 	select SENSOR_ASYNC_API
 	help
 	  Enable driver for SCH16T Combined Gyro Sensor and Accelerometer
+
+if SCH16T
+
+config SCH16T_STREAM
+	bool "SCH16T Streaming Mode"
+	depends on $(dt_compat_any_has_prop,$(DT_COMPAT_MURATA_SCH16T),int-gpios)
+	select RTIO_WORKQ
+	help
+	  Enable streaming mode for the SCH16T sensor.
+
+endif # SCH16T
