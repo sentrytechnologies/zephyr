@@ -38,6 +38,11 @@ struct sch16t_encoded_data {
 	};
 };
 
+struct sch16t_stream {
+	struct gpio_callback cb;
+	const struct device *dev;
+};
+
 struct sch16t_rtio_payloads {
 	int len;
 	uint32_t in[SCH16T_QUEUE_SIZE];
@@ -51,6 +56,9 @@ struct sch16t_data {
 		struct rtio_iodev_sqe *iodev_sqe;
 		struct sch16t_rtio_payloads payloads;
 	} rtio;
+#if defined(CONFIG_SCH16T_STREAM)
+	struct sch16t_stream stream;
+#endif /* CONFIG_SCH16T_STREAM */
 };
 
 struct sch16t_config {

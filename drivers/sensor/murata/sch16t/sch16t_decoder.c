@@ -129,11 +129,11 @@ static int sch16t_decoder_decode(const uint8_t *buf, struct sensor_chan_spec cha
 
 static bool sch16t_decoder_has_trigger(const uint8_t *buf, enum sensor_trigger_type trigger)
 {
-	/* TODO: add trigger for streaming here (data ready) */
-
 	switch (trigger) {
+	case SENSOR_TRIG_DATA_READY:
+		return true;
 	default:
-		return 0;
+		return false;
 	}
 }
 
