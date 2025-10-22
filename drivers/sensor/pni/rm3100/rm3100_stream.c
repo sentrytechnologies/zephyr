@@ -189,7 +189,7 @@ void rm3100_stream_submit(const struct device *dev,
 	const struct sensor_read_config *read_config = iodev_sqe->sqe.iodev->data;
 	struct rm3100_data *data = dev->data;
 	const struct rm3100_config *cfg = dev->config;
-	int err;
+	int err, ret;
 
 	if ((read_config->count != 1) ||
 	    (read_config->triggers[0].trigger != SENSOR_TRIG_DATA_READY)) {
@@ -204,8 +204,17 @@ void rm3100_stream_submit(const struct device *dev,
 	data->stream.settings.enabled.drdy = true;
 	data->stream.settings.opt.drdy = read_config->triggers[0].opt;
 
-	err = gpio_pin_interrupt_configure_dt(&cfg->int_gpio,
-						GPIO_INT_LEVEL_ACTIVE);
+	ret = gpio_pin_get_dt(&cfg->int_gpio);
+	if (ret == 1) {
+		rm3100_stream_get_data(dev);
+		return;
+	} else if (ret < 0) {
+		LOG_ERR("Failed to read int GPIO value (ret=%d)", ret);
+		rtio_iodev_sqe_err(iodev_sqe, ret);
+		return;
+	}
+
+	err = gpio_pin_interrupt_configure_dt(&cfg->int_gpio, GPIO_INT_EDGE_TO_ACTIVE);
 	if (err) {
 		LOG_ERR("Failed to enable interrupts");
 
