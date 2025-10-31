@@ -291,6 +291,10 @@ static int ublox_f9p_init(const struct device *dev)
 	const static struct ubx_frame version_get = UBX_FRAME_GET_INITIALIZER(
 						UBX_CLASS_ID_MON,
 						UBX_MSG_ID_MON_VER);
+
+	const static struct ubx_frame reset_gnss = UBX_FRAME_CFG_RST_INITIALIZER(
+							UBX_CFG_RST_COLD_START,
+							UBX_CFG_RST_MODE_HW);
 	struct ubx_mon_ver ver;
 
 	(void)init_match(dev);
@@ -299,6 +303,13 @@ static int ublox_f9p_init(const struct device *dev)
 	if (err < 0) {
 		LOG_ERR("Failed to initialize modem: %d", err);
 	}
+
+	err = ubx_f9p_msg_send(dev, &reset_gnss, UBX_FRAME_SZ(reset_gnss.payload_size), false);
+	if (err != 0) {
+		LOG_ERR("Failed to reset GNSS module: %d", err);
+		return err;
+	}
+	k_sleep(K_MSEC(1000));
 
 	err = ubx_f9p_msg_get(dev, &version_get,
 			      UBX_FRAME_SZ(version_get.payload_size),
