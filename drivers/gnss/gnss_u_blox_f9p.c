@@ -26,6 +26,7 @@ LOG_MODULE_REGISTER(ubx_f9p, CONFIG_GNSS_LOG_LEVEL);
 struct ubx_f9p_config {
 	const struct device *bus;
 	uint16_t fix_rate_ms;
+	bool reset;
 };
 
 struct ubx_f9p_data {
@@ -305,6 +306,18 @@ static int ublox_f9p_init(const struct device *dev)
 		LOG_ERR("Failed to initialize modem: %d", err);
 	}
 
+	if (cfg->reset) {
+		const static struct ubx_frame reset_gnss =
+			UBX_FRAME_CFG_RST_INITIALIZER(UBX_CFG_RST_COLD_START, UBX_CFG_RST_MODE_HW);
+
+		err = ubx_f9p_msg_send(dev, &reset_gnss, UBX_FRAME_SZ(reset_gnss.payload_size),
+				       false);
+		if (err != 0) {
+			LOG_ERR("Failed to reset GNSS module: %d", err);
+			return err;
+		}
+	}
+
 	err = ubx_f9p_msg_get(dev, &version_get,
 			      UBX_FRAME_SZ(version_get.payload_size),
 			      (void *)&ver, sizeof(ver));
@@ -546,6 +559,7 @@ static DEVICE_API(gnss, ublox_f9p_driver_api) = {
 	static const struct ubx_f9p_config ubx_f9p_cfg_##inst = {				   \
 		.bus = DEVICE_DT_GET(DT_INST_BUS(inst)),					   \
 		.fix_rate_ms = DT_INST_PROP(inst, fix_rate),					   \
+		.reset = (bool)DT_INST_PROP(inst, reset),					   \
 	};											   \
 												   \
 	static struct ubx_f9p_data ubx_f9p_data_##inst;						   \
