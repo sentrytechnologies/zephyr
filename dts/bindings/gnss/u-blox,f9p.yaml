@@ -1,5 +1,6 @@
 # Copyright (c) 2025 Croxel Inc.
 # Copyright (c) 2025 CogniPilot Foundation
+# Copyright (c) 2025 Sentry Technologies
 # SPDX-License-Identifier: Apache-2.0
 
 description: U-BLOX F9P High Precision GNSS Module
@@ -17,3 +18,14 @@ properties:
       Initial fix-rate GNSS modem will be operating on. May be adjusted at
       run-time through GNSS APIs. Must be greater than 50-ms.
       Default is power-on setting.
+
+  rtk-mode:
+    type: string
+    enum:
+      - "none"
+      - "station"
+      - "rover"
+    default: "none"
+    description: |
+      Describe the RTK mode that this device should be configured as. Setting this to `rover`
+      requires that CONFIG_GNSS_U_BLOX_F9P_RTK is enabled.

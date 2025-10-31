@@ -23,9 +23,16 @@
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(ubx_f9p, CONFIG_GNSS_LOG_LEVEL);
 
+enum ubx_f9p_rtk_mode {
+	UBX_F9P_RTK_MODE_NONE,
+	UBX_F9P_RTK_MODE_STATION,
+	UBX_F9P_RTK_MODE_ROVER,
+};
+
 struct ubx_f9p_config {
 	const struct device *bus;
 	uint16_t fix_rate_ms;
+	enum ubx_f9p_rtk_mode rtk_mode;
 };
 
 struct ubx_f9p_data {
@@ -211,7 +218,11 @@ static void f9p_rtk_data_cb(const struct device *dev, const struct gnss_rtk_data
 	 * it or not depending on the RTCM3 message type and its alignment with what the
 	 * GNSS modem has observed.
 	 */
-	(void)ubx_f9p_msg_send(dev, (const void *)data->data, data->len, false);
+	const struct ubx_f9p_config *cfg = dev->config;
+
+	if (cfg->rtk_mode == UBX_F9P_RTK_MODE_ROVER) {
+		(void)ubx_f9p_msg_send(dev, (const void *)data->data, data->len, false);
+	}
 }
 
 #endif /* CONFIG_GNSS_U_BLOX_F9P_RTK */
@@ -542,29 +553,30 @@ static DEVICE_API(gnss, ublox_f9p_driver_api) = {
 };
 
 
-#define UBX_F9P(inst)										   \
-												   \
-	BUILD_ASSERT((DT_INST_PROP(inst, fix_rate) >= 50) &&					   \
-		     (DT_INST_PROP(inst, fix_rate) < 65536),					   \
-		     "Invalid fix-rate. Please set it higher than 50-ms"			   \
-		     " and must fit in 16-bits.");						   \
-												   \
-	static const struct ubx_f9p_config ubx_f9p_cfg_##inst = {				   \
-		.bus = DEVICE_DT_GET(DT_INST_BUS(inst)),					   \
-		.fix_rate_ms = DT_INST_PROP(inst, fix_rate),					   \
-	};											   \
-												   \
-	static struct ubx_f9p_data ubx_f9p_data_##inst;						   \
-												   \
-	IF_ENABLED(CONFIG_GNSS_U_BLOX_F9P_RTK,							   \
-		   (GNSS_RTK_DATA_CALLBACK_DEFINE(DEVICE_DT_INST_GET(inst), f9p_rtk_data_cb)));	   \
-												   \
-	DEVICE_DT_INST_DEFINE(inst,								   \
-			      ublox_f9p_init,							   \
-			      NULL,								   \
-			      &ubx_f9p_data_##inst,						   \
-			      &ubx_f9p_cfg_##inst,						   \
-			      POST_KERNEL, CONFIG_GNSS_INIT_PRIORITY,				   \
+#define UBX_F9P(inst)										\
+												\
+	BUILD_ASSERT((DT_INST_PROP(inst, fix_rate) >= 50) &&					\
+		     (DT_INST_PROP(inst, fix_rate) < 65536),					\
+		     "Invalid fix-rate. Please set it higher than 50-ms"			\
+		     " and must fit in 16-bits.");						\
+												\
+	static const struct ubx_f9p_config ubx_f9p_cfg_##inst = {				\
+		.bus = DEVICE_DT_GET(DT_INST_BUS(inst)),					\
+		.fix_rate_ms = DT_INST_PROP(inst, fix_rate),					\
+		.rtk_mode = DT_INST_ENUM_IDX_OR(inst, rtk_mode, UBX_F9P_RTK_MODE_NONE)		\
+	};											\
+												\
+	static struct ubx_f9p_data ubx_f9p_data_##inst;						\
+												\
+	IF_ENABLED(CONFIG_GNSS_U_BLOX_F9P_RTK,							\
+		   (GNSS_RTK_DATA_CALLBACK_DEFINE(DEVICE_DT_INST_GET(inst), f9p_rtk_data_cb)));	\
+												\
+	DEVICE_DT_INST_DEFINE(inst,								\
+			      ublox_f9p_init,							\
+			      NULL,								\
+			      &ubx_f9p_data_##inst,						\
+			      &ubx_f9p_cfg_##inst,						\
+			      POST_KERNEL, CONFIG_GNSS_INIT_PRIORITY,				\
 			      &ublox_f9p_driver_api);
 
 DT_INST_FOREACH_STATUS_OKAY(UBX_F9P)
