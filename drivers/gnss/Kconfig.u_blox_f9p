@@ -57,6 +57,14 @@ config GNSS_U_BLOX_F9P_RTK
 	default y
 	depends on GNSS_RTK_PROTOCOL_RTCM3
 
+if GNSS_U_BLOX_F9P_RTK
+
+config GNSS_U_BLOX_F9P_STATION
+	bool "Enable station mode support for F9P module"
+	default n
+
+endif # GNSS_U_BLOX_F9P_RTK
+
 endif # GNSS_RTK
 
 endif # GNSS_U_BLOX_F9P
