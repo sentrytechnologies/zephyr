@@ -22,6 +22,11 @@ struct gnss_ubx_common_data {
 		size_t size;
 	} satellites;
 #endif
+	/* TODO: find a less cancerous way to keep track of heading data */
+	struct {
+		int32_t value;
+		bool valid;
+	} heading;
 };
 
 struct gnss_ubx_common_config {
