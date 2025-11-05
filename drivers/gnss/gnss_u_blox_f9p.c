@@ -23,10 +23,19 @@
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(ubx_f9p, CONFIG_GNSS_LOG_LEVEL);
 
+enum ubx_f9p_rtk_mode {
+	UBX_F9P_RTK_MODE_NONE,
+	UBX_F9P_RTK_MODE_STATION,
+	UBX_F9P_RTK_MODE_ROVER,
+};
+
 struct ubx_f9p_config {
 	const struct device *bus;
 	uint16_t fix_rate_ms;
 	bool reset;
+	enum ubx_f9p_rtk_mode rtk_mode;
+	const struct ubx_frame *svin_acc_lim;
+	const struct ubx_frame *svin_min_dur;
 };
 
 struct ubx_f9p_data {
@@ -52,6 +61,38 @@ struct ubx_f9p_data {
 	struct gnss_satellite satellites[CONFIG_GNSS_U_BLOX_F9P_SATELLITES_COUNT];
 #endif
 };
+
+#if CONFIG_GNSS_U_BLOX_F9P_STATION
+static void f9p_ubx_svin_callback(struct modem_ubx *ubx, const struct ubx_frame *frame, size_t len,
+				  void *user_data)
+{
+	struct ubx_nav_svin {
+		uint8_t version;
+		uint8_t reserved1[3];
+		uint32_t itow;
+		uint32_t dur;
+		int32_t meanx;
+		int32_t meany;
+		int32_t meanz;
+		int8_t meanxhp;
+		int8_t meanyhp;
+		int8_t meanzhp;
+		uint8_t reserved2;
+		uint32_t acc;
+		uint32_t obs;
+		uint8_t valid;
+		uint8_t active;
+	} __packed;
+
+	struct ubx_nav_svin *svin = (struct ubx_nav_svin *)&frame->payload_and_checksum;
+
+	/* TODO: foward this information to userspace instead of just logging */
+	if (!svin->valid) {
+		LOG_INF("station svin: dur: %d s, acc: %d mm, obs: %d", svin->dur, svin->acc / 10,
+			svin->obs);
+	}
+};
+#endif
 
 UBX_FRAME_DEFINE(disable_nmea_gga,
 	UBX_FRAME_CFG_VAL_SET_U8_INITIALIZER(UBX_KEY_MSG_OUT_NMEA_GGA_UART1, 0));
@@ -105,6 +146,40 @@ UBX_FRAME_DEFINE(enable_sat,
 	UBX_FRAME_CFG_VAL_SET_U8_INITIALIZER(UBX_KEY_MSG_OUT_UBX_NAV_SAT_UART1, 1));
 #endif
 
+#if CONFIG_GNSS_U_BLOX_F9P_STATION
+UBX_FRAME_DEFINE(enable_prot_out_rtcm3_uart2,
+	UBX_FRAME_CFG_VAL_SET_U8_INITIALIZER(UBX_KEY_UART2_PROTO_OUT_RTCM3X, 1));
+
+UBX_FRAME_DEFINE(enable_rtcm3_1005,
+	UBX_FRAME_CFG_VAL_SET_U8_INITIALIZER(UBX_KEY_MSG_OUT_UBX_RTCM_3X_TYPE1005_UART2, 1));
+UBX_FRAME_DEFINE(enable_rtcm3_1074,
+	UBX_FRAME_CFG_VAL_SET_U8_INITIALIZER(UBX_KEY_MSG_OUT_UBX_RTCM_3X_TYPE1074_UART2, 1));
+UBX_FRAME_DEFINE(enable_rtcm3_1077,
+	UBX_FRAME_CFG_VAL_SET_U8_INITIALIZER(UBX_KEY_MSG_OUT_UBX_RTCM_3X_TYPE1077_UART2, 1));
+UBX_FRAME_DEFINE(enable_rtcm3_1084,
+	UBX_FRAME_CFG_VAL_SET_U8_INITIALIZER(UBX_KEY_MSG_OUT_UBX_RTCM_3X_TYPE1084_UART2, 1));
+UBX_FRAME_DEFINE(enable_rtcm3_1087,
+	UBX_FRAME_CFG_VAL_SET_U8_INITIALIZER(UBX_KEY_MSG_OUT_UBX_RTCM_3X_TYPE1087_UART2, 1));
+UBX_FRAME_DEFINE(enable_rtcm3_1094,
+	UBX_FRAME_CFG_VAL_SET_U8_INITIALIZER(UBX_KEY_MSG_OUT_UBX_RTCM_3X_TYPE1094_UART2, 1));
+UBX_FRAME_DEFINE(enable_rtcm3_1097,
+	UBX_FRAME_CFG_VAL_SET_U8_INITIALIZER(UBX_KEY_MSG_OUT_UBX_RTCM_3X_TYPE1097_UART2, 1));
+UBX_FRAME_DEFINE(enable_rtcm3_1124,
+	UBX_FRAME_CFG_VAL_SET_U8_INITIALIZER(UBX_KEY_MSG_OUT_UBX_RTCM_3X_TYPE1124_UART2, 1));
+UBX_FRAME_DEFINE(enable_rtcm3_1127,
+	UBX_FRAME_CFG_VAL_SET_U8_INITIALIZER(UBX_KEY_MSG_OUT_UBX_RTCM_3X_TYPE1127_UART2, 1));
+UBX_FRAME_DEFINE(enable_rtcm3_1230,
+	UBX_FRAME_CFG_VAL_SET_U8_INITIALIZER(UBX_KEY_MSG_OUT_UBX_RTCM_3X_TYPE1230_UART2, 1));
+
+UBX_FRAME_DEFINE(enable_ubx_nav_svin,
+	UBX_FRAME_CFG_VAL_SET_U8_INITIALIZER(UBX_KEY_MSG_OUT_UBX_NAV_SVIN_UART1, 1));
+
+UBX_FRAME_DEFINE(enable_tmode_survey_in,
+	UBX_FRAME_CFG_VAL_SET_U8_INITIALIZER(UBX_KEY_TMODE_MODE, 1));
+UBX_FRAME_DEFINE(enable_tmode_pos_llh,
+	UBX_FRAME_CFG_VAL_SET_U8_INITIALIZER(UBX_KEY_TMODE_POS_TYPE, 1));
+#endif
+
 UBX_FRAME_ARRAY_DEFINE(u_blox_f9p_init_seq,
 	&disable_nmea_gga, &disable_nmea_rmc, &disable_nmea_gsv, &disable_nmea_dtm,
 	&disable_nmea_gbs, &disable_nmea_gll, &disable_nmea_gns, &disable_nmea_grs,
@@ -118,12 +193,25 @@ UBX_FRAME_ARRAY_DEFINE(u_blox_f9p_init_seq,
 #endif
 );
 
+#if CONFIG_GNSS_U_BLOX_F9P_STATION
+UBX_FRAME_ARRAY_DEFINE(u_blox_f9p_init_station_seq, &enable_prot_out_rtcm3_uart2,
+		       &enable_rtcm3_1005, &enable_rtcm3_1074, &enable_rtcm3_1077,
+		       &enable_rtcm3_1084, &enable_rtcm3_1087, &enable_rtcm3_1094,
+		       &enable_rtcm3_1097, &enable_rtcm3_1124, &enable_rtcm3_1127,
+		       &enable_rtcm3_1230, &enable_ubx_nav_svin, &enable_tmode_survey_in,
+		       &enable_tmode_pos_llh);
+#endif
+
 MODEM_UBX_MATCH_ARRAY_DEFINE(u_blox_f9p_unsol_messages,
 	MODEM_UBX_MATCH_DEFINE(UBX_CLASS_ID_NAV, UBX_MSG_ID_NAV_PVT,
 			       gnss_ubx_common_pvt_callback),
 #if CONFIG_GNSS_SATELLITES
 	MODEM_UBX_MATCH_DEFINE(UBX_CLASS_ID_NAV, UBX_MSG_ID_NAV_SAT,
 			       gnss_ubx_common_satellite_callback),
+#endif
+#if CONFIG_GNSS_U_BLOX_F9P_STATION
+	MODEM_UBX_MATCH_DEFINE(UBX_CLASS_ID_NAV, UBX_MSG_ID_NAV_SVIN,
+			       f9p_ubx_svin_callback),
 #endif
 );
 
@@ -217,7 +305,11 @@ static void f9p_rtk_data_cb(const struct device *dev, const struct gnss_rtk_data
 	 * it or not depending on the RTCM3 message type and its alignment with what the
 	 * GNSS modem has observed.
 	 */
-	(void)ubx_f9p_msg_send(dev, (const void *)data->data, data->len, false);
+	const struct ubx_f9p_config *cfg = dev->config;
+
+	if (cfg->rtk_mode == UBX_F9P_RTK_MODE_ROVER) {
+		(void)ubx_f9p_msg_send(dev, (const void *)data->data, data->len, false);
+	}
 }
 
 #endif /* CONFIG_GNSS_U_BLOX_F9P_RTK */
@@ -343,6 +435,37 @@ static int ublox_f9p_init(const struct device *dev)
 			return err;
 		}
 	}
+
+#ifdef CONFIG_GNSS_U_BLOX_F9P_STATION
+	if (cfg->rtk_mode == UBX_F9P_RTK_MODE_STATION) {
+
+		for (size_t i = 0; i < ARRAY_SIZE(u_blox_f9p_init_station_seq); i++) {
+			err = ubx_f9p_msg_send(
+				dev, u_blox_f9p_init_station_seq[i],
+				UBX_FRAME_SZ(u_blox_f9p_init_station_seq[i]->payload_size), true);
+			if (err < 0) {
+				LOG_ERR("Failed to send station init sequence - idx: %d, result: "
+					"%d",
+					i, err);
+				return err;
+			}
+		}
+
+		err = ubx_f9p_msg_send(dev, cfg->svin_acc_lim,
+				       UBX_FRAME_SZ(cfg->svin_acc_lim->payload_size), true);
+		if (err < 0) {
+			LOG_ERR("Failed to send station init sequence result: %d", err);
+			return err;
+		}
+
+		err = ubx_f9p_msg_send(dev, cfg->svin_min_dur,
+				       UBX_FRAME_SZ(cfg->svin_min_dur->payload_size), true);
+		if (err < 0) {
+			LOG_ERR("Failed to send station init sequence result: %d", err);
+			return err;
+		}
+	}
+#endif
 
 	return 0;
 }
@@ -556,10 +679,23 @@ static DEVICE_API(gnss, ublox_f9p_driver_api) = {
 		     "Invalid fix-rate. Please set it higher than 50-ms"			   \
 		     " and must fit in 16-bits.");						   \
 												   \
+	UBX_FRAME_DEFINE(set_tmode_svin_acc_lim_##inst,						   \
+			 UBX_FRAME_CFG_VAL_SET_U32_INITIALIZER(					   \
+				 UBX_KEY_TMODE_SVIN_ACC_LIM,					   \
+				 DT_INST_PROP_OR(inst, svin_acc_lim, 5000) * 10));		   \
+												   \
+	UBX_FRAME_DEFINE(									   \
+		set_tmode_svin_min_dur_##inst,							   \
+		UBX_FRAME_CFG_VAL_SET_U32_INITIALIZER(UBX_KEY_TMODE_SVIN_MIN_DUR,		   \
+						      DT_INST_PROP_OR(inst, svin_min_dur, 60)));   \
+												   \
 	static const struct ubx_f9p_config ubx_f9p_cfg_##inst = {				   \
 		.bus = DEVICE_DT_GET(DT_INST_BUS(inst)),					   \
 		.fix_rate_ms = DT_INST_PROP(inst, fix_rate),					   \
 		.reset = (bool)DT_INST_PROP(inst, reset),					   \
+		.rtk_mode = DT_INST_ENUM_IDX_OR(inst, rtk_mode, UBX_F9P_RTK_MODE_NONE),		   \
+		.svin_acc_lim = &set_tmode_svin_acc_lim_##inst,					   \
+		.svin_min_dur = &set_tmode_svin_min_dur_##inst,					   \
 	};											   \
 												   \
 	static struct ubx_f9p_data ubx_f9p_data_##inst;						   \

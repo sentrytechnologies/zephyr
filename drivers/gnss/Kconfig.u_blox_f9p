@@ -42,6 +42,10 @@ config GNSS_U_BLOX_F9P_NAV_MODE_HIGH_DYN_BIKE
 
 endchoice
 
+config GNSS_U_BLOX_F9P_STATION
+	bool "Enable station mode support for F9P module"
+	default n
+
 if GNSS_SATELLITES
 
 config GNSS_U_BLOX_F9P_SATELLITES_COUNT
