@@ -8,6 +8,7 @@
 #define DT_DRV_COMPAT u_blox_f9p
 
 #include <zephyr/kernel.h>
+#include <zephyr/sys/byteorder.h>
 #include <zephyr/drivers/uart.h>
 #include <zephyr/drivers/gnss.h>
 #include <zephyr/drivers/gnss/gnss_publish.h>
@@ -100,6 +101,44 @@ static void f9p_ubx_svin_callback(struct modem_ubx *ubx, const struct ubx_frame 
 };
 #endif
 
+#ifdef CONFIG_GNSS_U_BLOX_F9P_RTK
+static void f9p_ubx_relposned_callback(struct modem_ubx *ubx, const struct ubx_frame *frame,
+				       size_t len, void *user_data)
+{
+	struct ubx_nav_relposned {
+		uint8_t version;
+		uint8_t reserved1;
+		uint16_t ref_station_id;
+		uint32_t itow;
+		int32_t rel_pos_n;
+		int32_t rel_pos_e;
+		int32_t rel_pos_d;
+		int32_t rel_pos_len;
+		int32_t rel_pos_heading;
+		uint8_t reserved2[4];
+		int8_t rel_pos_hpn;
+		int8_t rel_pos_hpe;
+		int8_t rel_pos_hpd;
+		int8_t rel_pos_hp_len;
+		uint32_t acc_n;
+		uint32_t acc_e;
+		uint32_t acc_d;
+		uint32_t acc_len;
+		uint32_t acc_head;
+		uint8_t reserved3[4];
+		uint32_t flags;
+	} __packed;
+
+	struct ubx_nav_relposned *r = (void *)&frame->payload_and_checksum;
+	struct gnss_ubx_common_data *data = user_data;
+
+	sys_le_to_cpu(&r->rel_pos_heading, sizeof(r->rel_pos_heading));
+	sys_le_to_cpu(&r->flags, sizeof(r->flags));
+	data->heading.value = r->rel_pos_heading;
+	data->heading.valid = (r->flags >> 8) & 0x01;
+}
+#endif
+
 UBX_FRAME_DEFINE(disable_nmea_gga,
 	UBX_FRAME_CFG_VAL_SET_U8_INITIALIZER(UBX_KEY_MSG_OUT_NMEA_GGA_UART1, 0));
 UBX_FRAME_DEFINE(disable_nmea_rmc,
@@ -186,6 +225,11 @@ UBX_FRAME_DEFINE(enable_tmode_pos_llh,
 	UBX_FRAME_CFG_VAL_SET_U8_INITIALIZER(UBX_KEY_TMODE_POS_TYPE, 1));
 #endif
 
+#ifdef CONFIG_GNSS_U_BLOX_F9P_RTK
+UBX_FRAME_DEFINE(enable_ubx_nav_relposned,
+	UBX_FRAME_CFG_VAL_SET_U8_INITIALIZER(UBX_KEY_MSG_OUT_UBX_NAV_RELPOSNED_UART1, 1));
+#endif
+
 UBX_FRAME_ARRAY_DEFINE(u_blox_f9p_init_seq,
 	&disable_nmea_gga, &disable_nmea_rmc, &disable_nmea_gsv, &disable_nmea_dtm,
 	&disable_nmea_gbs, &disable_nmea_gll, &disable_nmea_gns, &disable_nmea_grs,
@@ -208,6 +252,10 @@ UBX_FRAME_ARRAY_DEFINE(u_blox_f9p_init_station_seq, &enable_prot_out_rtcm3_uart2
 		       &enable_tmode_pos_llh);
 #endif
 
+#ifdef CONFIG_GNSS_U_BLOX_F9P_RTK
+UBX_FRAME_ARRAY_DEFINE(u_blox_f9p_init_rover_seq, &enable_ubx_nav_relposned, );
+#endif
+
 MODEM_UBX_MATCH_ARRAY_DEFINE(u_blox_f9p_unsol_messages,
 	MODEM_UBX_MATCH_DEFINE(UBX_CLASS_ID_NAV, UBX_MSG_ID_NAV_PVT,
 			       gnss_ubx_common_pvt_callback),
@@ -218,6 +266,10 @@ MODEM_UBX_MATCH_ARRAY_DEFINE(u_blox_f9p_unsol_messages,
 #if CONFIG_GNSS_U_BLOX_F9P_STATION
 	MODEM_UBX_MATCH_DEFINE(UBX_CLASS_ID_NAV, UBX_MSG_ID_NAV_SVIN,
 			       f9p_ubx_svin_callback),
+#endif
+#ifdef CONFIG_GNSS_U_BLOX_F9P_RTK
+	MODEM_UBX_MATCH_DEFINE(UBX_CLASS_ID_NAV, UBX_MSG_ID_NAV_RELPOSNED,
+			       f9p_ubx_relposned_callback),
 #endif
 );
 
@@ -468,6 +520,21 @@ static int ublox_f9p_init(const struct device *dev)
 		if (err < 0) {
 			LOG_ERR("Failed to send station init sequence result: %d", err);
 			return err;
+		}
+	}
+#endif
+
+#ifdef CONFIG_GNSS_U_BLOX_F9P_RTK
+	if (cfg->rtk_mode == UBX_F9P_RTK_MODE_ROVER) {
+		for (size_t i = 0; i < ARRAY_SIZE(u_blox_f9p_init_rover_seq); i++) {
+			err = ubx_f9p_msg_send(
+				dev, u_blox_f9p_init_rover_seq[i],
+				UBX_FRAME_SZ(u_blox_f9p_init_rover_seq[i]->payload_size), true);
+			if (err < 0) {
+				LOG_ERR("Failed to send init sequence - idx: %d, result: %d", i,
+					err);
+				return err;
+			}
 		}
 	}
 #endif
