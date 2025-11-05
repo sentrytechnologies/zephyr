@@ -82,6 +82,11 @@ void gnss_ubx_common_pvt_callback(struct modem_ubx *ubx, const struct ubx_frame 
 		},
 	};
 
+	/* If relative heading data is valid, override */
+	if (data->heading.valid) {
+		gnss_data.nav_data.bearing = data->heading.value / 100;
+	}
+
 	gnss_publish_data(dev, &gnss_data);
 }
 
