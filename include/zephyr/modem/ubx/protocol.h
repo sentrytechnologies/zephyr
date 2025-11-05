@@ -64,6 +64,7 @@ enum ubx_msg_id_nav {
 	UBX_MSG_ID_NAV_PVT = 0x07,
 	UBX_MSG_ID_NAV_SAT = 0x35,
 	UBX_MSG_ID_NAV_SVIN = 0x3B,
+	UBX_MSG_ID_NAV_RELPOSNED = 0x3C,
 };
 
 enum ubx_nav_fix_type {
