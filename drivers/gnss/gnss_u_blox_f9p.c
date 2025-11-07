@@ -90,13 +90,17 @@ UBX_FRAME_DEFINE(enable_prot_out_ubx,
 #if CONFIG_GNSS_U_BLOX_F9P_RTK
 UBX_FRAME_DEFINE(enable_prot_in_rtcm3,
 	UBX_FRAME_CFG_VAL_SET_U8_INITIALIZER(UBX_KEY_UART1_PROTO_IN_RTCM3X, 1));
-UBX_FRAME_DEFINE(disable_prot_out_rtcm3,
+UBX_FRAME_DEFINE(disable_prot_out_rtcm3_uart1,
 	UBX_FRAME_CFG_VAL_SET_U8_INITIALIZER(UBX_KEY_UART1_PROTO_OUT_RTCM3X, 0));
 UBX_FRAME_DEFINE(enable_ubx_rtcm_rsp,
 	UBX_FRAME_CFG_VAL_SET_U8_INITIALIZER(UBX_KEY_MSG_OUT_UBX_RXM_RTCM_UART1, 1));
 UBX_FRAME_DEFINE(set_rtk_fix_mode,
 	UBX_FRAME_CFG_VAL_SET_U8_INITIALIZER(UBX_KEY_NAV_HP_CFG_GNSS_MODE,
 					     UBX_NAV_HP_DGNSS_MODE_RTK_FIXED));
+UBX_FRAME_DEFINE(enable_prot_en_uart2,
+	UBX_FRAME_CFG_VAL_SET_U8_INITIALIZER(UBX_KEY_UART2_PROTO_ENABLED, 1));
+UBX_FRAME_DEFINE(enable_prot_in_rtcm3_uart2,
+	UBX_FRAME_CFG_VAL_SET_U8_INITIALIZER(UBX_KEY_UART2_PROTO_IN_RTCM3X, 1));
 #endif
 #if CONFIG_GNSS_SATELLITES
 UBX_FRAME_DEFINE(enable_sat,
@@ -111,7 +115,8 @@ UBX_FRAME_ARRAY_DEFINE(u_blox_f9p_init_seq,
 	&enable_prot_in_ubx, &enable_prot_out_ubx,
 #if CONFIG_GNSS_U_BLOX_F9P_RTK
 	&enable_prot_in_rtcm3,
-	&disable_prot_out_rtcm3, &enable_ubx_rtcm_rsp, &set_rtk_fix_mode,
+	&disable_prot_out_rtcm3_uart1, &enable_ubx_rtcm_rsp, &set_rtk_fix_mode,
+	&enable_prot_en_uart2, &enable_prot_in_rtcm3_uart2,
 #endif
 #if CONFIG_GNSS_SATELLITES
 	&enable_sat,
