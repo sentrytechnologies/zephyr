@@ -1,0 +1,49 @@
+# Copyright (c) 2025 Sentry Technologies ApS
+# SPDX-License-Identifier: Apache-2.0
+
+description: SCH16T combined gyro sensor and accelerometer
+
+compatible: "murata,sch16t"
+
+include: [sensor-device.yaml, spi-device.yaml]
+
+properties:
+  decimation:
+    type: int
+    default: 0
+    description: |
+      Decimation indicates the reduction factor of the output sample rate. The total reduction
+      factor will be 2^n, where n is the value provided here.
+
+  acc-dynamic-range:
+    type: int
+    default: 1
+    description: |
+      Dynamic range for accelerometer. This controls the measurement range. The map of values is the
+      following:
+        1 | ±80 m/s²
+        2 | ±60 m/s²
+        3 | ±30 m/s²
+        4 | ±15 m/s²
+
+  rate-dynamic-range:
+    type: int
+    default: 1
+    description: |
+      Dynamic range for gyroscope. This controls the measurement range. The map of values is the
+      following:
+        1 | ±300 deg/s
+        2 | ±300 deg/s
+        3 | ±125 deg/s
+        4 | ±62.5 deg/s
+
+  reset-gpios:
+    type: phandle-array
+    required: true
+    description: |
+      EXTRESN GPIO acting as a reset.
+
+  int-gpios:
+    type: phandle-array
+    description: |
+      DRY_SYNC GPIO for interrupt handling for streaming mode.
