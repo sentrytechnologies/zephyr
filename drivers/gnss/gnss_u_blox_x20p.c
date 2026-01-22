@@ -190,6 +190,16 @@ UBX_FRAME_DEFINE(enable_sat,
 	UBX_FRAME_CFG_VAL_SET_U8_INITIALIZER(UBX_KEY_MSG_OUT_UBX_NAV_SAT_UART1, 1));
 #endif
 
+/* Antenna configuration */
+UBX_FRAME_DEFINE(enable_ant_voltctrl,
+	UBX_FRAME_CFG_VAL_SET_U8_INITIALIZER(UBX_KEY_HW_ANT_CFG_VOLTCTRL, 1));
+UBX_FRAME_DEFINE(enable_ant_shortdet,
+	UBX_FRAME_CFG_VAL_SET_U8_INITIALIZER(UBX_KEY_HW_ANT_CFG_SHORTDET, 1));
+UBX_FRAME_DEFINE(enable_ant_opendet,
+	UBX_FRAME_CFG_VAL_SET_U8_INITIALIZER(UBX_KEY_HW_ANT_CFG_OPENDET, 1));
+UBX_FRAME_DEFINE(enable_ant_pwrdown,
+	UBX_FRAME_CFG_VAL_SET_U8_INITIALIZER(UBX_KEY_HW_ANT_CFG_PWRDOWN, 1));
+
 #if CONFIG_GNSS_U_BLOX_X20P_STATION
 UBX_FRAME_DEFINE(enable_prot_out_rtcm3_uart2,
 	UBX_FRAME_CFG_VAL_SET_U8_INITIALIZER(UBX_KEY_UART2_PROTO_OUT_RTCM3X, 1));
@@ -240,6 +250,9 @@ UBX_FRAME_ARRAY_DEFINE(u_blox_x20p_init_seq,
 #if CONFIG_GNSS_SATELLITES
 	&enable_sat,
 #endif
+	/* Antenna configuration */
+	&enable_ant_voltctrl, &enable_ant_shortdet,
+	&enable_ant_opendet, &enable_ant_pwrdown,
 );
 
 #if CONFIG_GNSS_U_BLOX_X20P_STATION
