@@ -17,4 +17,6 @@ zephyr_library_sources_ifdef(CONFIG_GNSS_U_BLOX_F9P  gnss_ubx_common.c)
 zephyr_library_sources_ifdef(CONFIG_GNSS_U_BLOX_F9P gnss_u_blox_f9p.c)
 zephyr_library_sources_ifdef(CONFIG_GNSS_U_BLOX_M8 gnss_u_blox_m8.c)
 zephyr_library_sources_ifdef(CONFIG_GNSS_U_BLOX_M8 gnss_ubx_common.c)
+zephyr_library_sources_ifdef(CONFIG_GNSS_U_BLOX_X20P gnss_u_blox_x20p.c)
+zephyr_library_sources_ifdef(CONFIG_GNSS_U_BLOX_X20P gnss_ubx_common.c)
 # zephyr-keep-sorted-stop

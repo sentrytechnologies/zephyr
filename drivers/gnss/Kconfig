@@ -86,6 +86,7 @@ rsource "Kconfig.luatos_air530z"
 rsource "Kconfig.quectel_lcx6g"
 rsource "Kconfig.u_blox_f9p"
 rsource "Kconfig.u_blox_m8"
+rsource "Kconfig.u_blox_x20p"
 # zephyr-keep-sorted-stop
 
 endif
