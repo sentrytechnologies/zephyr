@@ -197,6 +197,17 @@ UBX_FRAME_DEFINE(enable_sat,
 	UBX_FRAME_CFG_VAL_SET_U8_INITIALIZER(UBX_KEY_MSG_OUT_UBX_NAV_SAT_UART1, 1));
 #endif
 
+#if DT_HAS_COMPAT_STATUS_OKAY(u_blox_x20p)
+UBX_FRAME_DEFINE(enable_ant_voltctrl,
+	UBX_FRAME_CFG_VAL_SET_U8_INITIALIZER(UBX_KEY_HW_ANT_CFG_VOLTCTRL, 1));
+UBX_FRAME_DEFINE(enable_ant_shortdet,
+	UBX_FRAME_CFG_VAL_SET_U8_INITIALIZER(UBX_KEY_HW_ANT_CFG_SHORTDET, 1));
+UBX_FRAME_DEFINE(enable_ant_opendet,
+	UBX_FRAME_CFG_VAL_SET_U8_INITIALIZER(UBX_KEY_HW_ANT_CFG_OPENDET, 1));
+UBX_FRAME_DEFINE(enable_ant_pwrdown,
+	UBX_FRAME_CFG_VAL_SET_U8_INITIALIZER(UBX_KEY_HW_ANT_CFG_PWRDOWN, 1));
+#endif
+
 #if CONFIG_GNSS_U_BLOX_HP_STATION
 UBX_FRAME_DEFINE(enable_prot_out_rtcm3_uart2,
 	UBX_FRAME_CFG_VAL_SET_U8_INITIALIZER(UBX_KEY_UART2_PROTO_OUT_RTCM3X, 1));
@@ -236,21 +247,39 @@ UBX_FRAME_DEFINE(enable_ubx_nav_relposned,
 	UBX_FRAME_CFG_VAL_SET_U8_INITIALIZER(UBX_KEY_MSG_OUT_UBX_NAV_RELPOSNED_UART1, 1));
 #endif
 
-UBX_FRAME_ARRAY_DEFINE(u_blox_hp_init_seq,
+UBX_FRAME_ARRAY_DEFINE(u_blox_f9p_init_seq,
 	&disable_nmea_gga, &disable_nmea_rmc, &disable_nmea_gsv, &disable_nmea_dtm,
 	&disable_nmea_gbs, &disable_nmea_gll, &disable_nmea_gns, &disable_nmea_grs,
 	&disable_nmea_gsa, &disable_nmea_gst, &disable_nmea_vlw, &disable_nmea_vtg,
-	&disable_nmea_zda, &enable_nav, &nav_fix_mode_auto,
-	&enable_prot_in_ubx, &enable_prot_out_ubx,
+	&disable_nmea_zda, &enable_nav, &nav_fix_mode_auto, &enable_prot_in_ubx,
+	&enable_prot_out_ubx,
 #if CONFIG_GNSS_U_BLOX_HP_RTK
-	&enable_prot_in_rtcm3,
-	&disable_prot_out_rtcm3_uart1, &enable_ubx_rtcm_rsp, &set_rtk_fix_mode,
-	&enable_prot_en_uart2, &enable_prot_in_rtcm3_uart2,
+	&enable_prot_in_rtcm3, &disable_prot_out_rtcm3_uart1, &enable_ubx_rtcm_rsp,
+	&set_rtk_fix_mode, &enable_prot_en_uart2, &enable_prot_in_rtcm3_uart2,
 #endif
 #if CONFIG_GNSS_SATELLITES
 	&enable_sat,
 #endif
 );
+
+#if DT_HAS_COMPAT_STATUS_OKAY(u_blox_x20p)
+UBX_FRAME_ARRAY_DEFINE(u_blox_x20p_init_seq,
+	&disable_nmea_gga, &disable_nmea_rmc, &disable_nmea_gsv, &disable_nmea_dtm,
+	&disable_nmea_gbs, &disable_nmea_gll, &disable_nmea_gns, &disable_nmea_grs,
+	&disable_nmea_gsa, &disable_nmea_gst, &disable_nmea_vlw, &disable_nmea_vtg,
+	&disable_nmea_zda, &enable_nav, &nav_fix_mode_auto, &enable_prot_in_ubx,
+	&enable_prot_out_ubx,
+#if CONFIG_GNSS_U_BLOX_HP_RTK
+	&enable_prot_in_rtcm3, &disable_prot_out_rtcm3_uart1, &enable_ubx_rtcm_rsp,
+	&set_rtk_fix_mode, &enable_prot_en_uart2, &enable_prot_in_rtcm3_uart2,
+#endif
+#if CONFIG_GNSS_SATELLITES
+	&enable_sat,
+#endif
+	&enable_ant_voltctrl, &enable_ant_shortdet, &enable_ant_opendet,
+	&enable_ant_pwrdown,
+);
+#endif
 
 #if CONFIG_GNSS_U_BLOX_HP_STATION
 UBX_FRAME_ARRAY_DEFINE(u_blox_hp_init_station_seq, &enable_prot_out_rtcm3_uart2,
@@ -492,10 +521,10 @@ static int ublox_hp_init(const struct device *dev)
 		return err;
 	}
 
-	for (size_t i = 0 ; i < ARRAY_SIZE(u_blox_hp_init_seq) ; i++) {
+	for (size_t i = 0 ; i < cfg->init_seq_len ; i++) {
 		err = ubx_hp_msg_send(dev,
-				       u_blox_hp_init_seq[i],
-				       UBX_FRAME_SZ(u_blox_hp_init_seq[i]->payload_size),
+				       cfg->init_seq[i],
+				       UBX_FRAME_SZ(cfg->init_seq[i]->payload_size),
 				       true);
 		if (err < 0) {
 			LOG_ERR("Failed to send init sequence - idx: %d, result: %d", i, err);
@@ -753,7 +782,7 @@ static DEVICE_API(gnss, ublox_hp_driver_api) = {
 };
 
 
-#define UBX_HP_DEFINE(node)									   \
+#define UBX_HP_DEFINE(node, _init_seq, _init_seq_len)						   \
 												   \
 	BUILD_ASSERT((DT_PROP(node, fix_rate) >= 50) &&						   \
 		     (DT_PROP(node, fix_rate) < 65536),						   \
@@ -776,8 +805,8 @@ static DEVICE_API(gnss, ublox_hp_driver_api) = {
 		.bus = DEVICE_DT_GET(DT_BUS(node)),						   \
 		.fix_rate_ms = DT_PROP(node, fix_rate),						   \
 		.reset = (bool)DT_PROP(node, reset),						   \
-		.init_seq = u_blox_hp_init_seq,							   \
-		.init_seq_len = ARRAY_SIZE(u_blox_hp_init_seq),					   \
+		.init_seq = _init_seq,								   \
+		.init_seq_len = _init_seq_len,							   \
 	IF_ENABLED(CONFIG_GNSS_U_BLOX_HP_RTK,							   \
 		(.rtk_mode = DT_ENUM_IDX_OR(node, rtk_mode, UBX_HP_RTK_MODE_NONE),))		   \
 	IF_ENABLED(CONFIG_GNSS_U_BLOX_HP_STATION,						   \
@@ -800,8 +829,8 @@ static DEVICE_API(gnss, ublox_hp_driver_api) = {
 			 POST_KERNEL, CONFIG_GNSS_INIT_PRIORITY,				   \
 			 &ublox_hp_driver_api);
 
-#define UBX_HP_F9P(node)  UBX_HP_DEFINE(node)
-#define UBX_HP_X20P(node) UBX_HP_DEFINE(node)
+#define UBX_HP_F9P(node)  UBX_HP_DEFINE(node, u_blox_f9p_init_seq, ARRAY_SIZE(u_blox_f9p_init_seq))
+#define UBX_HP_X20P(node) UBX_HP_DEFINE(node, u_blox_x20p_init_seq, ARRAY_SIZE(u_blox_x20p_init_seq))
 
 DT_FOREACH_STATUS_OKAY(u_blox_f9p, UBX_HP_F9P)
 DT_FOREACH_STATUS_OKAY(u_blox_x20p, UBX_HP_X20P)
