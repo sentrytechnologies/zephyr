@@ -282,11 +282,17 @@ UBX_FRAME_ARRAY_DEFINE(u_blox_x20p_init_seq,
 #endif
 
 #if CONFIG_GNSS_U_BLOX_HP_STATION
-UBX_FRAME_ARRAY_DEFINE(u_blox_hp_init_station_seq, &enable_prot_out_rtcm3_uart2,
+UBX_FRAME_ARRAY_DEFINE(u_blox_f9p_station_seq, &enable_prot_out_rtcm3_uart2,
 		       &enable_rtcm3_1005, &enable_rtcm3_1074, &enable_rtcm3_1077,
 		       &enable_rtcm3_1084, &enable_rtcm3_1087, &enable_rtcm3_1094,
 		       &enable_rtcm3_1097, &enable_rtcm3_1124, &enable_rtcm3_1127,
 		       &enable_rtcm3_1230, &enable_ubx_nav_svin, &enable_tmode_survey_in,
+		       &enable_tmode_pos_llh);
+
+UBX_FRAME_ARRAY_DEFINE(u_blox_x20p_station_seq, &enable_prot_out_rtcm3_uart2,
+		       &enable_rtcm3_1005, &enable_rtcm3_1074, &enable_rtcm3_1077,
+		       &enable_rtcm3_1094, &enable_rtcm3_1097, &enable_rtcm3_1124,
+		       &enable_rtcm3_1127, &enable_ubx_nav_svin, &enable_tmode_survey_in,
 		       &enable_tmode_pos_llh);
 #endif
 
@@ -534,10 +540,10 @@ static int ublox_hp_init(const struct device *dev)
 
 #ifdef CONFIG_GNSS_U_BLOX_HP_STATION
 	if (cfg->rtk_mode == UBX_HP_RTK_MODE_STATION) {
-		for (size_t i = 0; i < ARRAY_SIZE(u_blox_hp_init_station_seq); i++) {
+		for (size_t i = 0; i < cfg->station_seq_len; i++) {
 			err = ubx_hp_msg_send(
-				dev, u_blox_hp_init_station_seq[i],
-				UBX_FRAME_SZ(u_blox_hp_init_station_seq[i]->payload_size), true);
+				dev, cfg->station_seq[i],
+				UBX_FRAME_SZ(cfg->station_seq[i]->payload_size), true);
 			if (err < 0) {
 				LOG_ERR("Failed to send station init sequence - idx: %d, result: "
 					"%d",
@@ -782,7 +788,7 @@ static DEVICE_API(gnss, ublox_hp_driver_api) = {
 };
 
 
-#define UBX_HP_DEFINE(node, _init_seq, _init_seq_len)						   \
+#define UBX_HP_DEFINE(node, _init_seq, _init_seq_len, _station_seq, _station_seq_len)		   \
 												   \
 	BUILD_ASSERT((DT_PROP(node, fix_rate) >= 50) &&						   \
 		     (DT_PROP(node, fix_rate) < 65536),						   \
@@ -812,8 +818,8 @@ static DEVICE_API(gnss, ublox_hp_driver_api) = {
 	IF_ENABLED(CONFIG_GNSS_U_BLOX_HP_STATION,						   \
 		(.svin_acc_lim = &set_tmode_svin_acc_lim_##node,				   \
 		 .svin_min_dur = &set_tmode_svin_min_dur_##node,				   \
-		 .station_seq = u_blox_hp_init_station_seq,					   \
-		 .station_seq_len = ARRAY_SIZE(u_blox_hp_init_station_seq)))			   \
+		 .station_seq = _station_seq,							   \
+		 .station_seq_len = _station_seq_len))						   \
 	};											   \
 												   \
 	static struct ubx_hp_data ubx_hp_data_##node;						   \
@@ -829,8 +835,13 @@ static DEVICE_API(gnss, ublox_hp_driver_api) = {
 			 POST_KERNEL, CONFIG_GNSS_INIT_PRIORITY,				   \
 			 &ublox_hp_driver_api);
 
-#define UBX_HP_F9P(node)  UBX_HP_DEFINE(node, u_blox_f9p_init_seq, ARRAY_SIZE(u_blox_f9p_init_seq))
-#define UBX_HP_X20P(node) UBX_HP_DEFINE(node, u_blox_x20p_init_seq, ARRAY_SIZE(u_blox_x20p_init_seq))
+#define UBX_HP_F9P(node)								   \
+	UBX_HP_DEFINE(node, u_blox_f9p_init_seq, ARRAY_SIZE(u_blox_f9p_init_seq),	   \
+		      u_blox_f9p_station_seq, ARRAY_SIZE(u_blox_f9p_station_seq))
+
+#define UBX_HP_X20P(node)								   \
+	UBX_HP_DEFINE(node, u_blox_x20p_init_seq, ARRAY_SIZE(u_blox_x20p_init_seq),	   \
+		      u_blox_x20p_station_seq, ARRAY_SIZE(u_blox_x20p_station_seq))
 
 DT_FOREACH_STATUS_OKAY(u_blox_f9p, UBX_HP_F9P)
 DT_FOREACH_STATUS_OKAY(u_blox_x20p, UBX_HP_X20P)
