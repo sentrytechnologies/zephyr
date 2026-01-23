@@ -270,8 +270,8 @@ UBX_FRAME_ARRAY_DEFINE(u_blox_x20p_init_seq,
 	&disable_nmea_zda, &enable_nav, &nav_fix_mode_auto, &enable_prot_in_ubx,
 	&enable_prot_out_ubx,
 #if CONFIG_GNSS_U_BLOX_HP_RTK
-	&enable_prot_in_rtcm3, &disable_prot_out_rtcm3_uart1, &enable_ubx_rtcm_rsp,
-	&set_rtk_fix_mode, &enable_prot_en_uart2, &enable_prot_in_rtcm3_uart2,
+	&enable_prot_in_rtcm3, &disable_prot_out_rtcm3_uart1, &set_rtk_fix_mode,
+	&enable_prot_en_uart2, &enable_prot_in_rtcm3_uart2,
 #endif
 #if CONFIG_GNSS_SATELLITES
 	&enable_sat,
