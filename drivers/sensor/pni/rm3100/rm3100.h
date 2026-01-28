@@ -10,6 +10,7 @@
 
 #include <zephyr/drivers/sensor.h>
 #include <zephyr/drivers/gpio.h>
+#include <zephyr/sys/atomic.h>
 #include <zephyr/rtio/rtio.h>
 #include <zephyr/rtio/regmap.h>
 #include "rm3100_reg.h"
@@ -46,6 +47,7 @@ struct rm3100_stream {
 	struct gpio_callback cb;
 	const struct device *dev;
 	struct rtio_iodev_sqe *iodev_sqe;
+	atomic_t armed;
 	struct {
 		struct {
 			bool drdy : 1;
