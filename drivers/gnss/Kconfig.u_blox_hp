@@ -1,50 +1,52 @@
 # Copyright (c) 2025 Croxel Inc.
 # Copyright (c) 2025 CogniPilot Foundation
+# Copyright (c) 2025 Sentry Technologies
 # SPDX-License-Identifier: Apache-2.0
 
-config GNSS_U_BLOX_F9P
-	bool "U-BLOX F9P High precision GNSS Module"
+config GNSS_U_BLOX_HP
+	bool "U-BLOX HP High precision GNSS Module"
 	default y
 	depends on GNSS
-	depends on DT_HAS_U_BLOX_F9P_ENABLED
+	depends on DT_HAS_U_BLOX_F9P_ENABLED || DT_HAS_U_BLOX_X20P_ENABLED
 	select MODEM_MODULES
 	select MODEM_BACKEND_UART
 	select MODEM_UBX
 	help
-	  Enable U-BLOX F9P High precision GNSS modem driver.
+	  Enable U-BLOX HP High precision GNSS modem driver.
+	  Supports ZED-F9P and ZED-X20P modules.
 
-if GNSS_U_BLOX_F9P
+if GNSS_U_BLOX_HP
 
-choice GNSS_U_BLOX_F9P_NAV_MODE_HIGH_DYN
+choice GNSS_U_BLOX_HP_NAV_MODE_HIGH_DYN
 	prompt "High Dynamics mode setting"
-	default GNSS_U_BLOX_F9P_NAV_MODE_HIGH_DYN_AIRBORNE_2G
+	default GNSS_U_BLOX_HP_NAV_MODE_HIGH_DYN_AIRBORNE_2G
 	help
 	  Choose what the High Dynamics Navigation mode should be for your
 	  application use-case.
 
-config GNSS_U_BLOX_F9P_NAV_MODE_HIGH_DYN_AIRBORNE_1G
+config GNSS_U_BLOX_HP_NAV_MODE_HIGH_DYN_AIRBORNE_1G
 	bool "Consider High Dynamics mode as 1G Airborne"
 
-config GNSS_U_BLOX_F9P_NAV_MODE_HIGH_DYN_AIRBORNE_2G
+config GNSS_U_BLOX_HP_NAV_MODE_HIGH_DYN_AIRBORNE_2G
 	bool "Consider High Dynamics mode as 2G Airborne"
 
-config GNSS_U_BLOX_F9P_NAV_MODE_HIGH_DYN_AIRBORNE_4G
+config GNSS_U_BLOX_HP_NAV_MODE_HIGH_DYN_AIRBORNE_4G
 	bool "Consider High Dynamics mode as 4G Airborne"
 
-config GNSS_U_BLOX_F9P_NAV_MODE_HIGH_DYN_AUTOMOTIVE
+config GNSS_U_BLOX_HP_NAV_MODE_HIGH_DYN_AUTOMOTIVE
 	bool "Consider High Dynamics mode as Automotive mode"
 
-config GNSS_U_BLOX_F9P_NAV_MODE_HIGH_DYN_SEA
+config GNSS_U_BLOX_HP_NAV_MODE_HIGH_DYN_SEA
 	bool "Consider High Dynamics mode as Sea mode"
 
-config GNSS_U_BLOX_F9P_NAV_MODE_HIGH_DYN_BIKE
+config GNSS_U_BLOX_HP_NAV_MODE_HIGH_DYN_BIKE
 	bool "Consider High Dynamics mode as Bike mode"
 
 endchoice
 
 if GNSS_SATELLITES
 
-config GNSS_U_BLOX_F9P_SATELLITES_COUNT
+config GNSS_U_BLOX_HP_SATELLITES_COUNT
 	int "Maximum satellite count"
 	default 24
 
@@ -52,19 +54,19 @@ endif # GNSS_SATELLITES
 
 if GNSS_RTK
 
-config GNSS_U_BLOX_F9P_RTK
+config GNSS_U_BLOX_HP_RTK
 	bool "Use RTK to improve fix accuracy"
 	default y
 	depends on GNSS_RTK_PROTOCOL_RTCM3
 
-if GNSS_U_BLOX_F9P_RTK
+if GNSS_U_BLOX_HP_RTK
 
-config GNSS_U_BLOX_F9P_STATION
-	bool "Use station mode support on F9P module"
+config GNSS_U_BLOX_HP_STATION
+	bool "Use station mode support on HP module"
 	default n
 
-endif # GNSS_U_BLOX_F9P_RTK
+endif # GNSS_U_BLOX_HP_RTK
 
 endif # GNSS_RTK
 
-endif # GNSS_U_BLOX_F9P
+endif # GNSS_U_BLOX_HP
