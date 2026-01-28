@@ -1,0 +1,23 @@
+# Copyright (c) 2025 Sentry Technologies ApS
+# SPDX-License-Identifier: Apache-2.0
+
+config SCH16T
+	bool "SCH16T Combined Gyro Sensor and Accelerometer"
+	default y
+	depends on DT_HAS_MURATA_SCH16T_ENABLED
+	select SPI
+	select SPI_RTIO
+	select SENSOR_ASYNC_API
+	help
+	  Enable driver for SCH16T Combined Gyro Sensor and Accelerometer
+
+if SCH16T
+
+config SCH16T_STREAM
+	bool "SCH16T Streaming Mode"
+	depends on $(dt_compat_any_has_prop,$(DT_COMPAT_MURATA_SCH16T),int-gpios)
+	select RTIO_WORKQ
+	help
+	  Enable streaming mode for the SCH16T sensor.
+
+endif # SCH16T
