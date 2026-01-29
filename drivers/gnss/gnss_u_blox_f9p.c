@@ -5,6 +5,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+/* clang-format off */
+
 #define DT_DRV_COMPAT u_blox_f9p
 
 #include <zephyr/kernel.h>
