@@ -1,0 +1,51 @@
+# Copyright (c) 2025 Croxel Inc.
+# Copyright (c) 2025 CogniPilot Foundation
+# Copyright (c) 2025 Sentry Technologies
+# SPDX-License-Identifier: Apache-2.0
+
+description: U-BLOX X20P High Precision GNSS Module
+
+compatible: "u-blox,x20p"
+
+include:
+  - uart-device.yaml
+
+properties:
+  fix-rate:
+    type: int
+    default: 1000
+    description: |
+      Initial fix-rate GNSS modem will be operating on. May be adjusted at
+      run-time through GNSS APIs. Must be greater than 50-ms.
+      Default is power-on setting.
+
+  reset:
+    type: boolean
+    description: |
+      Force reset of the X20P module on initialization. This can be useful to clear cached settings
+      and locked sattellites.
+
+  rtk-mode:
+    type: string
+    enum:
+      - "none"
+      - "station"
+      - "rover"
+    default: "none"
+    description: |
+      Describe the RTK mode that this device should be configured as. Default value is the cold-boot
+      default within the module itself.
+
+  svin-acc-lim:
+    type: int
+    default: 5000
+    description: |
+      When in station mode, a survey in is performed. For that, it is necessary to know the minimum
+      necessary accuracy limit (in mm). Default value is the one that u-center defaults to.
+
+  svin-min-dur:
+    type: int
+    default: 60
+    description: |
+      When in station mode, a survey in is performed. For that, it is necessary to know the minimum
+      required duration for the survey (in s). Default value is the one that u-center defaults to.
