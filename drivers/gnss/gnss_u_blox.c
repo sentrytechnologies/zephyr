@@ -1,13 +1,12 @@
 /*
  * Copyright (c) 2025 Croxel Inc.
  * Copyright (c) 2025 CogniPilot Foundation
+ * Copyright (c) 2025 Sentry Technologies
  *
  * SPDX-License-Identifier: Apache-2.0
  */
 
 /* clang-format off */
-
-#define DT_DRV_COMPAT u_blox_f9p
 
 #include <zephyr/kernel.h>
 #include <zephyr/sys/byteorder.h>
@@ -38,12 +37,17 @@ struct ubx_config {
 	const struct device *bus;
 	uint16_t fix_rate_ms;
 	bool reset;
+	/* Device-specific init sequence */
+	const struct ubx_frame *const *init_seq;
+	size_t init_seq_len;
 #if CONFIG_GNSS_U_BLOX_RTK
 	enum ubx_rtk_mode rtk_mode;
 #endif /* CONFIG_GNSS_U_BLOX_RTK */
 #if CONFIG_GNSS_U_BLOX_STATION
 	const struct ubx_frame *svin_acc_lim;
 	const struct ubx_frame *svin_min_dur;
+	const struct ubx_frame *const *station_seq;
+	size_t station_seq_len;
 #endif /* CONFIG_GNSS_U_BLOX_STATION */
 };
 
@@ -195,6 +199,15 @@ UBX_FRAME_DEFINE(enable_sat,
 	UBX_FRAME_CFG_VAL_SET_U8_INITIALIZER(UBX_KEY_MSG_OUT_UBX_NAV_SAT_UART1, 1));
 #endif
 
+UBX_FRAME_DEFINE(enable_ant_voltctrl,
+	UBX_FRAME_CFG_VAL_SET_U8_INITIALIZER(UBX_KEY_HW_ANT_CFG_VOLTCTRL, 1));
+UBX_FRAME_DEFINE(enable_ant_shortdet,
+	UBX_FRAME_CFG_VAL_SET_U8_INITIALIZER(UBX_KEY_HW_ANT_CFG_SHORTDET, 1));
+UBX_FRAME_DEFINE(enable_ant_opendet,
+	UBX_FRAME_CFG_VAL_SET_U8_INITIALIZER(UBX_KEY_HW_ANT_CFG_OPENDET, 1));
+UBX_FRAME_DEFINE(enable_ant_pwrdown,
+	UBX_FRAME_CFG_VAL_SET_U8_INITIALIZER(UBX_KEY_HW_ANT_CFG_PWRDOWN, 1));
+
 #if CONFIG_GNSS_U_BLOX_STATION
 UBX_FRAME_DEFINE(enable_prot_out_rtcm3_uart2,
 	UBX_FRAME_CFG_VAL_SET_U8_INITIALIZER(UBX_KEY_UART2_PROTO_OUT_RTCM3X, 1));
@@ -234,15 +247,14 @@ UBX_FRAME_DEFINE(enable_ubx_nav_relposned,
 	UBX_FRAME_CFG_VAL_SET_U8_INITIALIZER(UBX_KEY_MSG_OUT_UBX_NAV_RELPOSNED_UART1, 1));
 #endif
 
-UBX_FRAME_ARRAY_DEFINE(u_blox_init_seq,
+UBX_FRAME_ARRAY_DEFINE(u_blox_common_init_seq,
 	&disable_nmea_gga, &disable_nmea_rmc, &disable_nmea_gsv, &disable_nmea_dtm,
 	&disable_nmea_gbs, &disable_nmea_gll, &disable_nmea_gns, &disable_nmea_grs,
 	&disable_nmea_gsa, &disable_nmea_gst, &disable_nmea_vlw, &disable_nmea_vtg,
-	&disable_nmea_zda, &enable_nav, &nav_fix_mode_auto,
-	&enable_prot_in_ubx, &enable_prot_out_ubx,
+	&disable_nmea_zda, &enable_nav, &nav_fix_mode_auto, &enable_prot_in_ubx,
+	&enable_prot_out_ubx,
 #if CONFIG_GNSS_U_BLOX_RTK
-	&enable_prot_in_rtcm3,
-	&disable_prot_out_rtcm3_uart1, &enable_ubx_rtcm_rsp, &set_rtk_fix_mode,
+	&enable_prot_in_rtcm3, &disable_prot_out_rtcm3_uart1, &set_rtk_fix_mode,
 	&enable_prot_en_uart2, &enable_prot_in_rtcm3_uart2,
 #endif
 #if CONFIG_GNSS_SATELLITES
@@ -250,13 +262,25 @@ UBX_FRAME_ARRAY_DEFINE(u_blox_init_seq,
 #endif
 );
 
+UBX_FRAME_ARRAY_DEFINE(u_blox_f9p_init_seq,
+#if CONFIG_GNSS_U_BLOX_RTK
+	&enable_ubx_rtcm_rsp,
+#endif
+);
+
+UBX_FRAME_ARRAY_DEFINE(u_blox_x20p_init_seq, &enable_ant_voltctrl,
+	&enable_ant_shortdet, &enable_ant_opendet, &enable_ant_pwrdown, );
+
 #if CONFIG_GNSS_U_BLOX_STATION
-UBX_FRAME_ARRAY_DEFINE(u_blox_station_seq, &enable_prot_out_rtcm3_uart2,
-		       &enable_rtcm3_1005, &enable_rtcm3_1074, &enable_rtcm3_1077,
-		       &enable_rtcm3_1084, &enable_rtcm3_1087, &enable_rtcm3_1094,
-		       &enable_rtcm3_1097, &enable_rtcm3_1124, &enable_rtcm3_1127,
-		       &enable_rtcm3_1230, &enable_ubx_nav_svin, &enable_tmode_survey_in,
-		       &enable_tmode_pos_llh);
+UBX_FRAME_ARRAY_DEFINE(u_blox_common_station_seq, &enable_prot_out_rtcm3_uart2,
+		       &enable_rtcm3_1005, &enable_rtcm3_1074,&enable_rtcm3_1077,
+		       &enable_rtcm3_1094, &enable_rtcm3_1097, &enable_rtcm3_1124,
+		       &enable_rtcm3_1127, &enable_ubx_nav_svin, &enable_tmode_pos_llh,
+		       &enable_tmode_survey_in, );
+
+
+UBX_FRAME_ARRAY_DEFINE(u_blox_f9p_station_seq, &enable_rtcm3_1084, &enable_rtcm3_1087,
+		       &enable_rtcm3_1230, );
 #endif
 
 #ifdef CONFIG_GNSS_U_BLOX_RTK
@@ -490,10 +514,21 @@ static int ublox_init(const struct device *dev)
 		return err;
 	}
 
-	for (size_t i = 0 ; i < ARRAY_SIZE(u_blox_init_seq) ; i++) {
+	for (size_t i = 0 ; i < ARRAY_SIZE(u_blox_common_init_seq); i++) {
 		err = ubx_msg_send(dev,
-				       u_blox_init_seq[i],
-				       UBX_FRAME_SZ(u_blox_init_seq[i]->payload_size),
+				       u_blox_common_init_seq[i],
+				       UBX_FRAME_SZ(u_blox_common_init_seq[i]->payload_size),
+				       true);
+		if (err < 0) {
+			LOG_ERR("Failed to send init sequence - idx: %d, result: %d", i, err);
+			return err;
+		}
+	}
+
+	for (size_t i = 0; i < cfg->init_seq_len; i++) {
+		err = ubx_msg_send(dev,
+				       cfg->init_seq[i],
+				       UBX_FRAME_SZ(cfg->init_seq[i]->payload_size),
 				       true);
 		if (err < 0) {
 			LOG_ERR("Failed to send init sequence - idx: %d, result: %d", i, err);
@@ -503,10 +538,22 @@ static int ublox_init(const struct device *dev)
 
 #ifdef CONFIG_GNSS_U_BLOX_STATION
 	if (cfg->rtk_mode == UBX_RTK_MODE_STATION) {
-		for (size_t i = 0; i < ARRAY_SIZE(u_blox_station_seq); i++) {
+		for (size_t i = 0; i < ARRAY_SIZE(u_blox_common_station_seq); i++) {
 			err = ubx_msg_send(
-				dev, u_blox_station_seq[i],
-				UBX_FRAME_SZ(u_blox_station_seq[i]->payload_size), true);
+				dev, u_blox_common_station_seq[i],
+				UBX_FRAME_SZ(u_blox_common_station_seq[i]->payload_size), true);
+			if (err < 0) {
+				LOG_ERR("Failed to send station init sequence - idx: %d, result: "
+					"%d",
+					i, err);
+				return err;
+			}
+		}
+
+		for (size_t i = 0; i < cfg->station_seq_len; i++) {
+			err = ubx_msg_send(
+				dev, cfg->station_seq[i],
+				UBX_FRAME_SZ(cfg->station_seq[i]->payload_size), true);
 			if (err < 0) {
 				LOG_ERR("Failed to send station init sequence - idx: %d, result: "
 					"%d",
@@ -751,48 +798,60 @@ static DEVICE_API(gnss, ublox_driver_api) = {
 };
 
 
-#define UBX_DEVICE(inst)									   \
+#define UBX_DEVICE(node, _init_seq, _init_seq_len, _station_seq, _station_seq_len)		   \
 												   \
-	BUILD_ASSERT((DT_INST_PROP(inst, fix_rate) >= 50) &&					   \
-		     (DT_INST_PROP(inst, fix_rate) < 65536),					   \
+	BUILD_ASSERT((DT_PROP(node, fix_rate) >= 50) &&						   \
+		     (DT_PROP(node, fix_rate) < 65536),						   \
 		     "Invalid fix-rate. Please set it higher than 50-ms"			   \
 		     " and must fit in 16-bits.");						   \
 												   \
 	IF_ENABLED(CONFIG_GNSS_U_BLOX_STATION,							   \
-	(UBX_FRAME_DEFINE(set_tmode_svin_acc_lim_##inst,					   \
+	(UBX_FRAME_DEFINE(set_tmode_svin_acc_lim_##node,					   \
 			 UBX_FRAME_CFG_VAL_SET_U32_INITIALIZER(					   \
 				 UBX_KEY_TMODE_SVIN_ACC_LIM,					   \
-				 DT_INST_PROP_OR(inst, svin_acc_lim, 5000) * 10));))		   \
+				 DT_PROP_OR(node, svin_acc_lim, 5000) * 10));))			   \
 												   \
 	IF_ENABLED(CONFIG_GNSS_U_BLOX_STATION,							   \
 	(UBX_FRAME_DEFINE(									   \
-		set_tmode_svin_min_dur_##inst,							   \
+		set_tmode_svin_min_dur_##node,							   \
 		UBX_FRAME_CFG_VAL_SET_U32_INITIALIZER(UBX_KEY_TMODE_SVIN_MIN_DUR,		   \
-						      DT_INST_PROP_OR(inst, svin_min_dur, 60));)) \
+						      DT_PROP_OR(node, svin_min_dur, 60));)))	   \
 												   \
-	static const struct ubx_config ubx_cfg_##inst = {					   \
-		.bus = DEVICE_DT_GET(DT_INST_BUS(inst)),					   \
-		.fix_rate_ms = DT_INST_PROP(inst, fix_rate),					   \
-		.reset = (bool)DT_INST_PROP(inst, reset),					   \
+	static const struct ubx_config ubx_cfg_##node = {					   \
+		.bus = DEVICE_DT_GET(DT_BUS(node)),						   \
+		.fix_rate_ms = DT_PROP(node, fix_rate),						   \
+		.reset = (bool)DT_PROP(node, reset),						   \
+		.init_seq = _init_seq,								   \
+		.init_seq_len = _init_seq_len,							   \
 	IF_ENABLED(CONFIG_GNSS_U_BLOX_RTK,							   \
-		(.rtk_mode = DT_INST_ENUM_IDX_OR(inst, rtk_mode, UBX_RTK_MODE_NONE),))		   \
+		(.rtk_mode = DT_ENUM_IDX_OR(node, rtk_mode, UBX_RTK_MODE_NONE),))		   \
 	IF_ENABLED(CONFIG_GNSS_U_BLOX_STATION,							   \
-		(.svin_acc_lim = &set_tmode_svin_acc_lim_##inst,))				   \
-	IF_ENABLED(CONFIG_GNSS_U_BLOX_STATION,							   \
-		(.svin_min_dur = &set_tmode_svin_min_dur_##inst,))				   \
+		(.svin_acc_lim = &set_tmode_svin_acc_lim_##node,				   \
+		 .svin_min_dur = &set_tmode_svin_min_dur_##node,				   \
+		 .station_seq = _station_seq,							   \
+		 .station_seq_len = _station_seq_len))						   \
 	};											   \
 												   \
-	static struct ubx_data ubx_data_##inst;							   \
+	static struct ubx_data ubx_data_##node;							   \
 												   \
 	IF_ENABLED(CONFIG_GNSS_U_BLOX_RTK,							   \
-		   (GNSS_DT_RTK_DATA_CALLBACK_DEFINE(DT_DRV_INST(inst), ubx_rtk_data_cb)));	   \
+		   (GNSS_DT_RTK_DATA_CALLBACK_DEFINE(node, ubx_rtk_data_cb)));			   \
 												   \
-	DEVICE_DT_INST_DEFINE(inst,								   \
-			      ublox_init,							   \
-			      NULL,								   \
-			      &ubx_data_##inst,							   \
-			      &ubx_cfg_##inst,							   \
-			      POST_KERNEL, CONFIG_GNSS_INIT_PRIORITY,				   \
-			      &ublox_driver_api);
+	DEVICE_DT_DEFINE(node,									   \
+			 ublox_init,								   \
+			 NULL,									   \
+			 &ubx_data_##node,							   \
+			 &ubx_cfg_##node,							   \
+			 POST_KERNEL, CONFIG_GNSS_INIT_PRIORITY,				   \
+			 &ublox_driver_api);
 
-DT_INST_FOREACH_STATUS_OKAY(UBX_DEVICE)
+#define _UBX_F9P(node)										   \
+	UBX_DEVICE(node, u_blox_f9p_init_seq, ARRAY_SIZE(u_blox_f9p_init_seq),			   \
+		   u_blox_f9p_station_seq, ARRAY_SIZE(u_blox_f9p_station_seq))
+
+#define _UBX_X20P(node)										   \
+	UBX_DEVICE(node, u_blox_x20p_init_seq, ARRAY_SIZE(u_blox_x20p_init_seq),		   \
+		   NULL, 0)
+
+DT_FOREACH_STATUS_OKAY(u_blox_f9p, _UBX_F9P)
+DT_FOREACH_STATUS_OKAY(u_blox_x20p, _UBX_X20P)
