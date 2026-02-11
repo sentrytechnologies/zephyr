@@ -31,7 +31,9 @@ static inline int rm3100_bus_read(const struct device *dev,
 		return -ENOMEM;
 	}
 
-	reg = reg | REG_READ_BIT;
+	if (rtio_is_spi(data->rtio.type)) {
+		reg = reg | REG_READ_BIT;
+	}
 
 	rtio_sqe_prep_write(write_sqe, iodev, RTIO_PRIO_HIGH, &reg, 1, NULL);
 	write_sqe->flags |= RTIO_SQE_TRANSACTION;
